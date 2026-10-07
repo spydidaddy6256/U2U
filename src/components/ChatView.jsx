@@ -58,7 +58,7 @@ function updateMessageStatus(msg, newStatus, extra = {}) {
 }
 
 export default function ChatView({
-  sessionId, passcode, cryptoKey, clientId, authTicket,
+  sessionId, cryptoKey, clientId, authTicket,
   onLeave, onSessionBurned, onSessionExpired, onToast,
   securityModalOpen, setSecurityModalOpen,
   clearChatModalOpen, setClearChatModalOpen,
@@ -69,7 +69,6 @@ export default function ChatView({
   const [systemMessages, setSystemMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isPeerTyping, setIsPeerTyping] = useState(false);
-  const [peerPresent, setPeerPresent] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState(null);
@@ -103,6 +102,12 @@ export default function ChatView({
   const seenMessageIdsRef = useRef(new Set());
   // Ref to always have the latest socket without recreating the observer
   const socketLiveRef = useRef(null);
+  const authTicketRef = useRef(authTicket);
+
+  useEffect(() => {
+    authTicketRef.current = authTicket;
+  }, [authTicket]);
+
   // Audio deduplication refs so re-renders or repeated acks never replay sounds
   const deliveredSoundsRef = useRef(new Set());
   const seenSoundsRef = useRef(new Set());
@@ -174,63 +179,14 @@ export default function ChatView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // WebSocket connection with authenticated ticket
-  useEffect(() => {
-    let isCancelled = false;
-
-    function connectWs() {
-      if (isCancelled) return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      const ws = new WebSocket(wsUrl);
-      socketRef.current = ws;
-
-      ws.onopen = () => {
-        if (isCancelled) return;
-        setConnectionStatus('connected');
-        // Join with authenticated server ticket (not just credentials)
-        ws.send(JSON.stringify({
-          type: 'join',
-          sessionId,
-          ticket: authTicket,
-          clientId
-        }));
-      };
-
-      ws.onmessage = async (event) => {
-        if (isCancelled) return;
-        try {
-          const data = JSON.parse(event.data);
-          await handleWsMessage(data, ws);
-        } catch (err) {
-          console.error('WS message error:', err);
-        }
-      };
-
-      ws.onclose = () => {
-        if (isCancelled) return;
-        setConnectionStatus('reconnecting');
-        reconnectTimeoutRef.current = setTimeout(connectWs, 2200);
-      };
-
-      ws.onerror = () => {};
-    }
-
-    connectWs();
-
-    return () => {
-      isCancelled = true;
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      socketRef.current?.close();
-    };
-  }, [sessionId, authTicket, clientId]);
-
   // Process incoming WebSocket messages
-  const handleWsMessage = async (data, ws) => {
+  const handleWsMessage = useCallback(async (data, ws) => {
     switch (data.type) {
       case 'joined': {
+        if (data.reconnectTicket) {
+          authTicketRef.current = data.reconnectTicket;
+        }
         if (data.participantsCount >= 2) {
-          setPeerPresent(true);
           onToast("You're both here.");
         }
         // Restore authoritative permanent participant-left status if present
@@ -303,7 +259,6 @@ export default function ChatView({
       case 'peer_present': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = true;
-        setPeerPresent(true);
         if (!wasPresent) {
           onToast("You're both here.");
           playUserJoinedSound();
@@ -314,7 +269,6 @@ export default function ChatView({
       case 'peer_left': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
-        setPeerPresent(false);
         if (wasPresent) {
           playUserLeftSound();
         }
@@ -325,7 +279,6 @@ export default function ChatView({
       case 'peer_left_intentional': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
-        setPeerPresent(false);
         const text = data.text || 'User left the session';
         const timestamp = data.timestamp || Date.now();
         setSystemMessages(prev => {
@@ -568,7 +521,62 @@ export default function ChatView({
 
       default: break;
     }
-  };
+  }, [cryptoKey, clientId, sessionId, onToast, onSessionBurned, onSessionExpired, activeViewerMsg, isAtBottom, replyingTo, reactionPickerTarget, activeMenuMsgId]);
+
+  const handleWsMessageRef = useRef(handleWsMessage);
+  useEffect(() => {
+    handleWsMessageRef.current = handleWsMessage;
+  }, [handleWsMessage]);
+
+  // WebSocket connection with authenticated ticket and auto-reconnect
+  useEffect(() => {
+    let isCancelled = false;
+
+    function connectWs() {
+      if (isCancelled) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (isCancelled) return;
+        setConnectionStatus('connected');
+        ws.send(JSON.stringify({
+          type: 'join',
+          sessionId,
+          ticket: authTicketRef.current || authTicket,
+          clientId
+        }));
+      };
+
+      ws.onmessage = async (event) => {
+        if (isCancelled) return;
+        try {
+          const data = JSON.parse(event.data);
+          await handleWsMessageRef.current?.(data, ws);
+        } catch (err) {
+          console.error('WS message error:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        if (isCancelled) return;
+        setConnectionStatus('reconnecting');
+        reconnectTimeoutRef.current = setTimeout(connectWs, 2200);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    connectWs();
+
+    return () => {
+      isCancelled = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      socketRef.current?.close();
+    };
+  }, [sessionId, authTicket, clientId]);
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -870,7 +878,7 @@ export default function ChatView({
     ));
   };
 
-  // Open photo in full-screen in-app viewer (starts timer & seen receipt on first reveal)
+  // Open photo in full-screen in-app viewer (starts 8s countdown & seen receipt on first reveal)
   const handleOpenViewer = (msg) => {
     handleRevealPhoto(msg);
     setActiveViewerMsg(msg);
@@ -878,11 +886,30 @@ export default function ChatView({
     playViewOnceOpenedSound();
   };
 
-  // Close full-screen in-app viewer
-  const handleCloseViewer = () => {
+  // Close full-screen in-app viewer (guarantees immediate permanent consumption)
+  const handleCloseViewer = useCallback(() => {
+    if (activeViewerMsg) {
+      const mid = activeViewerMsg.id;
+      setMessages(prev => prev.map(m =>
+        m.id === mid ? { ...m, isExpired: true, photoUrl: null } : m
+      ));
+      setPhotoTimers(prev => {
+        const u = { ...prev };
+        delete u[mid];
+        return u;
+      });
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: 'photo_closed',
+          sessionId,
+          messageId: mid,
+          senderId: clientId,
+        }));
+      }
+    }
     setImageViewerOpen(false);
     setActiveViewerMsg(null);
-  };
+  }, [activeViewerMsg, sessionId, clientId]);
 
   // Unsend
   const handleUnsend = (messageId) => {

@@ -268,14 +268,12 @@ export function VoiceNoteBubble({ msg, isSelf, voiceTimer, onPlaybackEnded }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSec, setCurrentSec] = useState(0);
-  const [hasPlayedToEnd, setHasPlayedToEnd] = useState(msg.voiceEnded || false);
-
   const audioRef = useRef(null);
   const rafRef = useRef(null);
+  const hasEndedRef = useRef(msg.voiceEnded || false);
 
-  // Sync hasPlayedToEnd if msg.voiceEnded becomes true
   useEffect(() => {
-    if (msg.voiceEnded) setHasPlayedToEnd(true);
+    if (msg.voiceEnded) hasEndedRef.current = true;
   }, [msg.voiceEnded]);
 
   const initAudio = useCallback(() => {
@@ -292,16 +290,12 @@ export function VoiceNoteBubble({ msg, isSelf, voiceTimer, onPlaybackEnded }) {
       cancelAnimationFrame(rafRef.current);
       audioUtils.playVoiceNoteEndedSound?.();
 
-      setHasPlayedToEnd(prev => {
-        if (!prev) {
-          // Notify parent so it can cancel 180s timer and start 60s post-listen timer
-          if (!isSelf) {
-            onPlaybackEnded(msg.id);
-          }
-          return true;
+      if (!hasEndedRef.current) {
+        hasEndedRef.current = true;
+        if (!isSelf) {
+          onPlaybackEnded(msg.id);
         }
-        return prev;
-      });
+      }
     };
 
     audio.onerror = () => {

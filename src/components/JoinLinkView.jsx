@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
+import { ArrowRight, AlertCircle, ShieldCheck, KeyRound } from 'lucide-react';
 import { playTickSound, playErrorSound } from '../utils/audio';
 
 export default function JoinLinkView({
@@ -13,6 +13,14 @@ export default function JoinLinkView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [passcode, setPasscode] = useState(() => {
+    try {
+      const hash = window.location.hash;
+      return hash ? decodeURIComponent(hash.replace(/^#/, '')).trim() : '';
+    } catch {
+      return '';
+    }
+  });
 
   // Check token status on mount
   useEffect(() => {
@@ -49,6 +57,14 @@ export default function JoinLinkView({
 
   const handleJoin = async () => {
     if (isJoining) return;
+
+    const cleanPasscode = passcode.trim();
+    if (!cleanPasscode) {
+      setError('Please enter the session passcode to complete zero-knowledge key derivation.');
+      playErrorSound();
+      return;
+    }
+
     setIsJoining(true);
     playTickSound();
 
@@ -67,7 +83,7 @@ export default function JoinLinkView({
         return;
       }
 
-      await onJoinSuccess(data.sessionId, data.passcode, data.ticket, data.expiresAt);
+      await onJoinSuccess(data.sessionId, cleanPasscode, data.ticket, data.expiresAt);
     } catch {
       setError('Unable to join session. Please try again.');
       playErrorSound();
@@ -94,7 +110,7 @@ export default function JoinLinkView({
     );
   }
 
-  if (error) {
+  if (error && !error.includes('passcode')) {
     return (
       <div className="flow-wrapper">
         <div className="flow-card">
@@ -166,10 +182,10 @@ export default function JoinLinkView({
             <ShieldCheck size={26} />
           </div>
           <h2>You're invited to a private U2U session.</h2>
-          <p>End-to-end encrypted • Temporary • No permanent trace</p>
+          <p>End-to-end encrypted • Temporary • Zero-knowledge</p>
         </div>
 
-        <div className="credential-block" style={{ marginBottom: '22px' }}>
+        <div className="credential-block" style={{ marginBottom: '18px' }}>
           <div className="credential-label">
             <span>Session Status</span>
             <span style={{ fontSize: '0.72rem', color: 'var(--status-connected)' }}>● Participant waiting</span>
@@ -181,10 +197,45 @@ export default function JoinLinkView({
           </div>
         </div>
 
+        {/* If passcode was not in URL fragment, prompt user for passcode */}
+        {!passcode && (
+          <div className="credential-block" style={{ marginBottom: '18px' }}>
+            <div className="credential-label">
+              <span>Passcode</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>Required for E2EE</span>
+            </div>
+            <div className="credential-box" style={{ padding: '4px 8px' }}>
+              <KeyRound size={16} style={{ color: 'var(--text-tertiary)', marginLeft: 6, marginRight: 6 }} />
+              <input
+                type="text"
+                className="credential-input"
+                placeholder="word-word-word-word"
+                value={passcode}
+                onChange={(e) => {
+                  setPasscode(e.target.value);
+                  if (error) setError('');
+                }}
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.94rem',
+                  outline: 'none',
+                  padding: '8px 4px'
+                }}
+              />
+            </div>
+            {error && (
+              <p style={{ color: '#f17062', fontSize: '0.78rem', marginTop: 6 }}>{error}</p>
+            )}
+          </div>
+        )}
+
         <button 
           type="button"
           className="btn btn-primary"
-          disabled={isJoining}
+          disabled={isJoining || (!passcode && !passcode.trim())}
           onClick={handleJoin}
           style={{ width: '100%', height: '48px', fontSize: '0.96rem' }}
         >

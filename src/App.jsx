@@ -10,10 +10,9 @@ import TermsView from './components/TermsView';
 import PrivacyView from './components/PrivacyView';
 import SecurityModal from './components/modals/SecurityModal';
 import JoinLinkView from './components/JoinLinkView';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { generateSessionId, generatePasscode, deriveKey, hashPasscode } from './utils/crypto';
 import { 
-  playBurnSound, 
-  playTickSound, 
   playSessionCreatedSound, 
   playConnectedSound, 
   playErrorSound, 
@@ -26,7 +25,18 @@ export default function App() {
   const [sessionId, setSessionId] = useState('');
   const [passcode, setPasscode] = useState('');
   const [cryptoKey, setCryptoKey] = useState(null);
-  const [clientId, setClientId] = useState('');
+  const [clientId] = useState(() => {
+    try {
+      let storedId = sessionStorage.getItem('u2u-client-id');
+      if (!storedId) {
+        storedId = 'c-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
+        sessionStorage.setItem('u2u-client-id', storedId);
+      }
+      return storedId;
+    } catch {
+      return 'c-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
+    }
+  });
   const [expiresAt, setExpiresAt] = useState(null);
   const [authTicket, setAuthTicket] = useState('');
 
@@ -53,7 +63,6 @@ export default function App() {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message }]);
 
-    // Play appropriate notification sound
     const lower = String(message || '').toLowerCase();
     if (lower.includes('error') || lower.includes('fail') || lower.includes('denied') || lower.includes("couldn't")) {
       playErrorSound();
@@ -71,16 +80,6 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('u2u-theme', theme); } catch {}
   }, [theme]);
-
-  // Ephemeral client ID (session-scoped)
-  useEffect(() => {
-    let storedId = sessionStorage.getItem('u2u-client-id');
-    if (!storedId) {
-      storedId = 'c-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
-      sessionStorage.setItem('u2u-client-id', storedId);
-    }
-    setClientId(storedId);
-  }, []);
 
   // Screen privacy: blur on tab change
   useEffect(() => {
@@ -116,11 +115,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
 
-  // ── Create Session (now server-authoritative) ──
+  // ── Create Session (Server-Authoritative & Zero-Knowledge) ──
   const handleStartCreate = async () => {
     const newSessionId = generateSessionId();
     const newPasscode = generatePasscode();
-    const pcHash = await hashPasscode(newPasscode);
+    const pcHash = await hashPasscode(newPasscode, newSessionId);
     const key = await deriveKey(newPasscode, newSessionId);
 
     try {
@@ -129,8 +128,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           sessionId: newSessionId, 
-          passcodeHash: pcHash,
-          passcode: newPasscode
+          passcodeHash: pcHash
         })
       });
 
@@ -150,7 +148,7 @@ export default function App() {
     }
   };
 
-  // ── Join with verified join link ──
+  // ── Join with verified zero-knowledge join link ──
   const handleJoinWithLink = async (targetSessionId, targetPasscode, ticket, expAt) => {
     const key = await deriveKey(targetPasscode, targetSessionId);
 
@@ -160,8 +158,9 @@ export default function App() {
     setExpiresAt(expAt);
     setAuthTicket(ticket);
 
+    // Immediately sanitize browser URL and clear fragment
     try {
-      window.history.pushState(null, '', '/');
+      window.history.replaceState(null, '', '/');
     } catch {}
 
     return new Promise(resolve => {
@@ -174,11 +173,11 @@ export default function App() {
     });
   };
 
-  // ── Join Session (strict server verification) ──
+  // ── Join Session (Strict server verification + client key derivation) ──
   const handleJoinSubmit = async (inputSessionId, inputPasscode) => {
     const cleanId = inputSessionId.trim().toUpperCase();
     const cleanPasscode = inputPasscode.trim();
-    const pcHash = await hashPasscode(cleanPasscode);
+    const pcHash = await hashPasscode(cleanPasscode, cleanId);
     const key = await deriveKey(cleanPasscode, cleanId);
 
     const res = await fetch('/api/session/auth', {
@@ -196,7 +195,6 @@ export default function App() {
     setExpiresAt(data.expiresAt);
     setAuthTicket(data.ticket);
 
-    // Small connection animation delay
     return new Promise(resolve => {
       setTimeout(() => {
         playConnectedSound();
@@ -207,10 +205,9 @@ export default function App() {
     });
   };
 
-  // ── Enter chat from Create flow (re-auth with creator ticket) ──
+  // ── Enter chat from Create flow ──
   const handleEnterChat = async () => {
-    // Creator already has ticket from create API; get a fresh one via re-auth
-    const pcHash = await hashPasscode(passcode);
+    const pcHash = await hashPasscode(passcode, sessionId);
     try {
       const res = await fetch('/api/session/auth', {
         method: 'POST',
@@ -218,10 +215,11 @@ export default function App() {
         body: JSON.stringify({ sessionId, passcodeHash: pcHash, clientId })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setAuthTicket(data.ticket);
+      if (res.ok && data.ticket) {
+        setAuthTicket(data.ticket);
+      }
     } catch {
-      // Fallback to existing creator ticket (still valid for 60s)
+      // Fallback to existing creator ticket
     }
     playConnectedSound();
     setView('chat');
@@ -237,7 +235,7 @@ export default function App() {
     setJoinToken('');
     try {
       if (window.location.pathname !== '/') {
-        window.history.pushState(null, '', '/');
+        window.history.replaceState(null, '', '/');
       }
     } catch {}
   };
@@ -259,10 +257,6 @@ export default function App() {
     setView('expired');
   };
 
-  // Connection status for header (passed down from ChatView via prop drilling or via ref — simplified here)
-  const [connectionStatus, setConnectionStatus] = useState('connected');
-  const [peerPresent, setPeerPresent] = useState(false);
-
   return (
     <div className="u2u-container">
       {/* Ambient background lighting for glass depth */}
@@ -278,8 +272,6 @@ export default function App() {
         setView={setView}
         sessionId={sessionId}
         expiresAt={expiresAt}
-        connectionStatus={connectionStatus}
-        peerPresent={peerPresent}
         onOpenSecurity={() => setSecurityModalOpen(true)}
         onOpenClearChat={() => setClearChatModalOpen(true)}
         onOpenBurnSession={() => setBurnSessionModalOpen(true)}
@@ -336,7 +328,7 @@ export default function App() {
             onJoinSuccess={handleJoinWithLink}
             onCreateClick={handleStartCreate}
             onGoHome={() => {
-              try { window.history.pushState(null, '', '/'); } catch {}
+              try { window.history.replaceState(null, '', '/'); } catch {}
               setView('landing');
             }}
             onToast={addToast}
@@ -346,7 +338,6 @@ export default function App() {
         {view === 'chat' && cryptoKey && (
           <ChatView
             sessionId={sessionId}
-            passcode={passcode}
             cryptoKey={cryptoKey}
             clientId={clientId}
             authTicket={authTicket}
@@ -386,6 +377,9 @@ export default function App() {
           <div key={t.id} className="toast">{t.message}</div>
         ))}
       </div>
+
+      {/* PWA Install Prompt */}
+      <PwaInstallPrompt />
     </div>
   );
 }

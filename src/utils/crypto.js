@@ -21,18 +21,32 @@ export function generateSessionId() {
   return `${getRandomChars(4)}-${getRandomChars(4)}-${getRandomChars(2)}`;
 }
 
-// Generate secure 12-character passcode
+// Generate secure 4-word passcode from 128 curated distinct words (~28 bits entropy)
 const PASSCODE_WORDS = [
-  'amber', 'cedar', 'delta', 'drift', 'ember', 'frost',
-  'haven', 'lunar', 'mesa', 'moss', 'nexus', 'oasis',
-  'orbit', 'prism', 'pulse', 'quiet', 'ridge', 'river',
-  'solis', 'stone', 'swift', 'tide', 'trace', 'vapor'
+  'amber', 'anchor', 'anthem', 'archer', 'arrow', 'atlas', 'beacon', 'blade',
+  'blaze', 'bloom', 'breeze', 'bridge', 'brook', 'canyon', 'cedar', 'cinder',
+  'cliff', 'cloud', 'clover', 'coast', 'comet', 'coral', 'crane', 'creek',
+  'crest', 'dawn', 'delta', 'drift', 'dune', 'eagle', 'echo', 'ember',
+  'fable', 'falcon', 'feather', 'fern', 'flare', 'flint', 'forest', 'frost',
+  'galaxy', 'glade', 'glimmer', 'grove', 'harbor', 'haven', 'hawk', 'haze',
+  'island', 'jasper', 'lagoon', 'leaf', 'lotus', 'lunar', 'meadow', 'mesa',
+  'meteor', 'mist', 'moon', 'moss', 'nebula', 'nexus', 'north', 'oasis',
+  'ocean', 'orbit', 'orchid', 'pebble', 'petal', 'phoenix', 'pine', 'planet',
+  'plume', 'polar', 'pond', 'prairie', 'prism', 'pulse', 'quarry', 'quartz',
+  'quest', 'quiet', 'radar', 'rain', 'ravine', 'reef', 'ridge', 'ripple',
+  'river', 'robin', 'sage', 'sail', 'sand', 'shadow', 'shield', 'shore',
+  'sierra', 'silver', 'slate', 'solar', 'solis', 'spark', 'spring', 'star',
+  'stone', 'storm', 'stream', 'summit', 'swift', 'thistle', 'tide', 'timber',
+  'trace', 'trail', 'valley', 'vapor', 'velvet', 'vessel', 'violet', 'vortex',
+  'wave', 'willow', 'wind', 'winter', 'zenith', 'zephyr', 'zero', 'zone'
 ];
 
 export function generatePasscode() {
-  const array = new Uint8Array(3);
+  const array = new Uint8Array(4);
   crypto.getRandomValues(array);
-  return `${PASSCODE_WORDS[array[0] % PASSCODE_WORDS.length]}-${PASSCODE_WORDS[array[1] % PASSCODE_WORDS.length]}-${PASSCODE_WORDS[array[2] % PASSCODE_WORDS.length]}`;
+  // Unbiased selection: 128 is an exact power of 2 (array[i] & 127)
+  const mask = PASSCODE_WORDS.length - 1; // 127
+  return `${PASSCODE_WORDS[array[0] & mask]}-${PASSCODE_WORDS[array[1] & mask]}-${PASSCODE_WORDS[array[2] & mask]}-${PASSCODE_WORDS[array[3] & mask]}`;
 }
 
 // Helper: Uint8Array <-> Base64
@@ -56,9 +70,11 @@ export function base64ToBuffer(base64) {
 }
 
 // Derive SHA-256 hex hash of passcode for verification without exposing key
-export async function hashPasscode(passcode) {
+export async function hashPasscode(passcode, sessionId = '') {
   const enc = new TextEncoder();
-  const data = enc.encode(`U2U-AUTH:${passcode.trim()}`);
+  const cleanPasscode = String(passcode || '').trim();
+  const cleanSessionId = String(sessionId || '').trim().toUpperCase();
+  const data = enc.encode(`U2U-AUTH-V2:${cleanSessionId}:${cleanPasscode}`);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');

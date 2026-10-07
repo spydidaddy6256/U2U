@@ -5,17 +5,15 @@ import { formatCountdownSec } from '../utils/time';
 /**
  * PhotoBubble Component
  * Features:
- * - One-view image: ALWAYS blurred in the chat view with the actual image visible underneath (Telegram/Instagram style)
- * - Tapping immediately opens the clear image in the in-app fullscreen ImageViewerModal
- * - Never navigates to the image's raw data URL and prevents default click/drag behavior
- * - Closing the viewer immediately returns to the chat with the image heavily blurred again
- * - Actual received image data (msg.photoUrl) is the direct image source
- * - Expiration countdown badge when active
- * - Expired tombstone when time hits 0
+ * - One-view image: ALWAYS blurred in the chat view with the actual image visible underneath
+ * - Tapping opens the clear image in the in-app fullscreen ImageViewerModal
+ * - 8-second authoritative lifetime upon reveal
+ * - Closing viewer or timer expiration permanently consumes and locks the photo
+ * - Never navigates to raw data URLs
+ * - Expired tombstone when consumed
  */
 export default function PhotoBubble({
   msg,
-  isSelf,
   timer,
   onExpandViewer
 }) {
@@ -23,11 +21,11 @@ export default function PhotoBubble({
     return null;
   }
 
-  const isExpired = msg.isExpired || (timer && timer.secondsLeft <= 0);
+  const isExpired = msg.isExpired || (timer && timer.secondsLeft <= 0) || (msg.photoOpened && !timer);
 
   if (isExpired) {
     return (
-      <div className="photo-expired-card">
+      <div className="photo-expired-card" aria-label="Expired one-view photo">
         <Lock size={15} />
         <span>Photo expired</span>
       </div>
@@ -41,7 +39,6 @@ export default function PhotoBubble({
     }
     if (isExpired) return;
 
-    // Open image in full-screen in-app viewer directly
     onExpandViewer(msg);
   };
 
@@ -57,9 +54,9 @@ export default function PhotoBubble({
       }}
       role="button"
       tabIndex={0}
-      aria-label="Tap to view private photo in viewer"
+      aria-label="Tap to view private 8-second photo in viewer"
     >
-      {/* Actual received image — heavily blurred in the chat view */}
+      {/* Received image — heavily blurred in chat */}
       <img
         src={msg.photoUrl}
         alt="Private photo preview"
@@ -70,7 +67,7 @@ export default function PhotoBubble({
         onContextMenu={(e) => e.preventDefault()}
       />
 
-      {/* Telegram-style spoiler overlay with 'Tap to view' */}
+      {/* Spoiler overlay with 'Tap to view' */}
       <div className="photo-spoiler-overlay">
         <div className="photo-spoiler-badge">
           <div className="photo-spoiler-icon-wrapper">
@@ -78,7 +75,7 @@ export default function PhotoBubble({
           </div>
           <span className="photo-spoiler-label">Tap to view</span>
           <span className="photo-spoiler-sublabel">
-            {timer ? `Disappears in ${formatCountdownSec(timer.secondsLeft)}` : 'Disappears in 30s'}
+            {timer ? `Disappears in ${formatCountdownSec(timer.secondsLeft)}` : 'Disappears in 8s'}
           </span>
         </div>
       </div>

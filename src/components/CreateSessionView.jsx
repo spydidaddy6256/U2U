@@ -99,7 +99,7 @@ export default function CreateSessionView({
   };
 
   const handleCopyJoinLink = async () => {
-    const joinUrl = `${window.location.origin}/join/${joinToken}`;
+    const joinUrl = `${window.location.origin}/join/${joinToken}#${encodeURIComponent(passcode)}`;
     const success = await copyTextToClipboard(joinUrl);
     playTickSound();
     setCopiedJoinLink(true);

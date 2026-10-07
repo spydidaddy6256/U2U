@@ -9,6 +9,7 @@
     "start": "node server.js",
     "build": "vite build",
     "lint": "oxlint",
+    "test": "node test/security.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

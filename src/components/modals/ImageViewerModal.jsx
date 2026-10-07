@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { X, Clock, Eye } from 'lucide-react';
 import { formatCountdownSec } from '../../utils/time';
 
@@ -15,23 +15,31 @@ export default function ImageViewerModal({
     if (expiresAt) {
       return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
     }
-    return 30;
+    return 8;
   });
+
+  // Strictly enforce permanent expiration when viewer is closed
+  const handleImmediateClose = useCallback(() => {
+    if (onPhotoExpired && messageId) {
+      onPhotoExpired(messageId);
+    }
+    onClose();
+  }, [onPhotoExpired, messageId, onClose]);
 
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        handleImmediateClose();
       }
     }
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleImmediateClose]);
 
-  // Track 30-second countdown
+  // Track 8-second countdown
   useEffect(() => {
     if (!isOpen || !expiresAt) return;
 
@@ -41,19 +49,16 @@ export default function ImageViewerModal({
 
       if (sec <= 0) {
         setSecondsLeft(0);
-        if (onPhotoExpired && messageId) {
-          onPhotoExpired(messageId);
-        }
-        onClose();
+        handleImmediateClose();
       } else {
         setSecondsLeft(sec);
       }
     }
 
     updateTimer();
-    const interval = setInterval(updateTimer, 500);
+    const interval = setInterval(updateTimer, 250);
     return () => clearInterval(interval);
-  }, [isOpen, expiresAt, messageId, onPhotoExpired, onClose]);
+  }, [isOpen, expiresAt, handleImmediateClose]);
 
   if (!isOpen) return null;
 
@@ -61,14 +66,13 @@ export default function ImageViewerModal({
     return (
       <div
         className="image-viewer-backdrop"
-        onClick={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
+        onClick={handleImmediateClose}
+        role="dialog"
+        aria-modal="true"
       >
         <div style={{ textAlign: 'center', color: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
           <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 8 }}>Photo expired</p>
-          <p style={{ fontSize: '0.86rem', color: 'rgba(255, 255, 255, 0.6)' }}>This photo is no longer available.</p>
+          <p style={{ fontSize: '0.86rem', color: 'rgba(255, 255, 255, 0.6)' }}>This one-view photo has disappeared.</p>
         </div>
       </div>
     );
@@ -77,43 +81,42 @@ export default function ImageViewerModal({
   return (
     <div
       className="image-viewer-backdrop"
-      onClick={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
+      onClick={handleImmediateClose}
       role="dialog"
       aria-modal="true"
+      aria-label="One-view photo viewer"
     >
       <div className="viewer-header" onClick={(e) => e.stopPropagation()}>
         {expiresAt ? (
           <div className="viewer-countdown-pill">
-            <Clock size={14} className="countdown-pulse-icon" />
+            <Clock size={15} className="countdown-pulse-icon" />
             <span>Expires in {formatCountdownSec(secondsLeft)}</span>
           </div>
         ) : (
           <div className="viewer-countdown-pill">
-            <Eye size={14} />
-            <span>30s viewing limit applies once opened</span>
+            <Eye size={15} />
+            <span>8s viewing limit</span>
           </div>
         )}
 
         <button 
-          className="icon-btn" 
+          type="button"
+          className="viewer-close-btn" 
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onClose();
+            handleImmediateClose();
           }}
-          style={{ color: '#ffffff', background: 'rgba(255, 255, 255, 0.12)', width: 36, height: 36 }}
-          aria-label="Close viewer"
+          aria-label="Close photo (consumes one-view)"
+          title="Close photo"
         >
-          <X size={20} />
+          <X size={22} />
         </button>
       </div>
 
       <img 
         src={photoUrl} 
-        alt="Temporary encrypted photo" 
+        alt="Temporary one-view photo" 
         className="viewer-image"
         onClick={(e) => {
           e.preventDefault();
