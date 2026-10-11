@@ -11,6 +11,7 @@ import PrivacyView from './components/PrivacyView';
 import SecurityModal from './components/modals/SecurityModal';
 import JoinLinkView from './components/JoinLinkView';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
+import CinematicLaunch from './components/CinematicLaunch';
 import { generateSessionId, generatePasscode, deriveKey, hashPasscode } from './utils/crypto';
 import { 
   playSessionCreatedSound, 
@@ -21,6 +22,7 @@ import {
 import './App.css';
 
 export default function App() {
+  const [showLaunchReveal, setShowLaunchReveal] = useState(true);
   const [view, setView] = useState('landing'); // landing|create|join|chat|expired|terms|privacy
   const [sessionId, setSessionId] = useState('');
   const [passcode, setPasscode] = useState('');
@@ -380,6 +382,11 @@ export default function App() {
 
       {/* PWA Install Prompt */}
       <PwaInstallPrompt />
+
+      {/* Cinematic Launch — 3D Logo Reveal */}
+      {showLaunchReveal && (
+        <CinematicLaunch onComplete={() => setShowLaunchReveal(false)} />
+      )}
     </div>
   );
 }
