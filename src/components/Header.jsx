@@ -15,6 +15,7 @@ import {
   Clock
 } from 'lucide-react';
 import { isAudioEnabled, setAudioEnabled, playTickSound } from '../utils/audio';
+import { isAndroidPlatform } from '../utils/platform';
 
 export default function Header({
   view,
@@ -31,13 +32,21 @@ export default function Header({
   screenPrivacyEnabled,
   setScreenPrivacyEnabled,
   theme,
-  setTheme
+  setTheme,
+  chatHeaderVisible = true,
+  onHeaderInteraction,
+  onHeaderMenuChange
 }) {
   const [soundOn, setSoundOn] = useState(isAudioEnabled());
   const [menuOpen, setMenuOpen] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState('');
   const [isWarning, setIsWarning] = useState(false);
   const menuRef = useRef(null);
+
+  // Notify parent of menu open/close to pause auto-hide timer
+  useEffect(() => {
+    onHeaderMenuChange?.(menuOpen);
+  }, [menuOpen, onHeaderMenuChange]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -98,8 +107,15 @@ export default function Header({
     setTheme(next);
   };
 
+  const isAndroidChat = view === 'chat' && isAndroidPlatform();
+  const headerClass = [
+    'u2u-header',
+    isAndroidChat ? 'u2u-header-chat-android' : '',
+    isAndroidChat && !chatHeaderVisible ? 'u2u-header-chat-hidden' : ''
+  ].filter(Boolean).join(' ');
+
   return (
-    <header className="u2u-header">
+    <header className={headerClass} onPointerDown={() => onHeaderInteraction?.()} onClick={() => onHeaderInteraction?.()}>
       {/* Brand */}
       <div 
         className="u2u-brand" 

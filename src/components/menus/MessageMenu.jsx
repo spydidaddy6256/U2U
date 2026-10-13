@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Reply, Copy, Trash2, Smile, Info, Plus
 } from 'lucide-react';
@@ -10,7 +11,8 @@ import { getUserReaction } from '../../utils/reactions';
 /**
  * MessageMenu Component:
  * Contextual 3-dot action popover attached directly to a specific message bubble.
- * Includes quick reaction pill bar + contextual action items (Reply, Copy, Unsend, React, More).
+ * Rendered via portal with viewport-aware placement to ensure it is never hidden
+ * behind the bottom composer, screen edges, or header.
  */
 export default function MessageMenu({
   isOpen,
@@ -27,6 +29,122 @@ export default function MessageMenu({
 }) {
   const menuRef = useRef(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [placement, setPlacement] = useState('top');
+  const [coords, setCoords] = useState(null);
+
+  const updatePosition = useCallback(() => {
+    if (!menuRef.current || !targetMessage) return;
+
+    // Anchor element: prioritize passed anchorEl (3-dot button) or message bubble
+    const anchor = anchorEl || (typeof document !== 'undefined'
+      ? document.querySelector(`[data-message-id="${targetMessage.id}"] .message-more-btn`) ||
+        document.querySelector(`[data-message-id="${targetMessage.id}"] .message-bubble`)
+      : null);
+    if (!anchor) return;
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const bubbleEl = anchor.closest('.message-bubble-line')?.querySelector('.message-bubble') ||
+      anchor.closest('.message-wrapper')?.querySelector('.message-bubble');
+    const targetRect = bubbleEl ? bubbleEl.getBoundingClientRect() : anchorRect;
+
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const menuWidth = menuRect.width || 250;
+    const menuHeight = menuRect.height || 230;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Viewport boundaries: safe from top header and bottom composer
+    const headerEl = document.querySelector('.u2u-header');
+    const headerRect = headerEl ? headerEl.getBoundingClientRect() : null;
+    const safeTop = Math.max(8, (headerRect && headerRect.bottom > 0) ? headerRect.bottom + 6 : 8);
+
+    const composerEl = document.querySelector('.composer-wrapper') || document.querySelector('.composer-bar');
+    const composerRect = composerEl ? composerEl.getBoundingClientRect() : null;
+    const safeBottom = Math.min(
+      viewportHeight - 8,
+      (composerRect && composerRect.top < viewportHeight) ? composerRect.top - 8 : viewportHeight - 8
+    );
+
+    // If message is completely off-screen, dismiss menu
+    if (targetRect.bottom < safeTop - 40 || targetRect.top > safeBottom + 40) {
+      onClose();
+      return;
+    }
+
+    const availableHeight = Math.max(160, safeBottom - safeTop);
+    const maxMenuHeight = Math.min(availableHeight, 420);
+
+    const spaceAbove = targetRect.top - safeTop;
+    const spaceBelow = safeBottom - targetRect.bottom;
+
+    let chosenPlacement = 'top';
+    let calculatedTop;
+
+    // Prefer positioning ABOVE the message so the bottom composer never obscures it
+    if (spaceAbove >= menuHeight + 6) {
+      chosenPlacement = 'top';
+      calculatedTop = targetRect.top - menuHeight - 6;
+    } else if (spaceBelow >= menuHeight + 6) {
+      chosenPlacement = 'bottom';
+      calculatedTop = targetRect.bottom + 6;
+    } else {
+      // Pick the side with more room and clamp to bounds
+      if (spaceAbove >= spaceBelow) {
+        chosenPlacement = 'top';
+        calculatedTop = Math.max(safeTop, targetRect.top - menuHeight - 6);
+      } else {
+        chosenPlacement = 'bottom';
+        calculatedTop = Math.min(safeBottom - menuHeight, Math.max(safeTop, targetRect.bottom + 6));
+      }
+    }
+
+    // Strict vertical clamping within safe viewport bounds
+    calculatedTop = Math.max(safeTop, Math.min(calculatedTop, safeBottom - Math.min(menuHeight, maxMenuHeight)));
+
+    // Horizontal placement:
+    // Self messages: align right edge with message bubble's right edge
+    // Peer messages: align left edge with message bubble's left edge
+    let calculatedLeft;
+    if (isSelf) {
+      calculatedLeft = targetRect.right - menuWidth;
+    } else {
+      calculatedLeft = targetRect.left;
+    }
+
+    // Clamp horizontal position so menu stays comfortably within screen edges
+    calculatedLeft = Math.max(10, Math.min(calculatedLeft, viewportWidth - menuWidth - 10));
+
+    setPlacement(chosenPlacement);
+    setCoords({
+      top: Math.round(calculatedTop),
+      left: Math.round(calculatedLeft),
+      maxHeight: Math.round(maxMenuHeight),
+      placement: chosenPlacement
+    });
+  }, [anchorEl, isSelf, onClose, targetMessage]);
+
+  // Position immediately before browser paint to prevent jumping
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    updatePosition();
+
+    function handleScroll() {
+      updatePosition();
+    }
+
+    function handleResize() {
+      updatePosition();
+    }
+
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isOpen, showDetails, updatePosition]);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -42,7 +160,7 @@ export default function MessageMenu({
     function handlePointerDown(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         // If clicked on anchor button, let its own click handler toggle
-        if (anchorEl && anchorEl.contains(e.target)) return;
+        if (anchorEl && (anchorEl === e.target || anchorEl.contains(e.target))) return;
         onClose();
       }
     }
@@ -68,10 +186,31 @@ export default function MessageMenu({
     if (callback) callback(...args);
   };
 
-  return (
+  const finalStyle = coords ? {
+    position: 'fixed',
+    top: `${coords.top}px`,
+    left: `${coords.left}px`,
+    maxHeight: `${coords.maxHeight}px`,
+    overflowY: 'auto',
+    zIndex: 2500,
+    opacity: 1,
+    visibility: 'visible',
+    pointerEvents: 'auto'
+  } : {
+    position: 'fixed',
+    top: -9999,
+    left: -9999,
+    opacity: 0,
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    zIndex: 2500
+  };
+
+  const menuContent = (
     <div
       ref={menuRef}
-      className={`message-context-menu ${isSelf ? 'align-self' : 'align-peer'}`}
+      className={`message-context-menu placement-${placement} ${isSelf ? 'align-self' : 'align-peer'}`}
+      style={finalStyle}
       onClick={(e) => e.stopPropagation()}
       role="menu"
       aria-label="Message options"
@@ -194,4 +333,6 @@ export default function MessageMenu({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(menuContent, document.body) : menuContent;
 }

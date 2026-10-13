@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Plus, KeyRound, ShieldCheck, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, KeyRound, ShieldCheck, FileText } from 'lucide-react';
 import { playTickSound } from '../utils/audio';
+import UpdateBanner from './UpdateBanner';
 
-export default function LandingView({ onCreateClick, onJoinClick, onOpenSecurity, onOpenTerms, onOpenPrivacy }) {
+export default function LandingView({ onCreateClick, onJoinClick, onOpenSecurity, onOpenTerms, onOpenPrivacy, onOpenWhatsNew }) {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   return (
@@ -73,6 +74,9 @@ export default function LandingView({ onCreateClick, onJoinClick, onOpenSecurity
           <span>Join a Session</span>
         </button>
       </div>
+
+      {/* Mobile-Exclusive In-Flow Update Banner */}
+      <UpdateBanner onViewUpdates={onOpenWhatsNew} />
 
       {/* Subtle Privacy Statement */}
       <div className="landing-footer-statement">

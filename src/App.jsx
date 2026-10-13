@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import LandingView from './components/LandingView';
 import CreateSessionView from './components/CreateSessionView';
@@ -9,9 +9,11 @@ import ScreenPrivacyShield from './components/ScreenPrivacyShield';
 import TermsView from './components/TermsView';
 import PrivacyView from './components/PrivacyView';
 import SecurityModal from './components/modals/SecurityModal';
+import WhatsNewModal from './components/modals/WhatsNewModal';
 import JoinLinkView from './components/JoinLinkView';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import CinematicLaunch from './components/CinematicLaunch';
+import { isAndroidPlatform } from './utils/platform';
 import { generateSessionId, generatePasscode, deriveKey, hashPasscode } from './utils/crypto';
 import { 
   playSessionCreatedSound, 
@@ -44,6 +46,7 @@ export default function App() {
 
   // Header-managed modals
   const [securityModalOpen, setSecurityModalOpen] = useState(false);
+  const [whatsNewModalOpen, setWhatsNewModalOpen] = useState(false);
   const [clearChatModalOpen, setClearChatModalOpen] = useState(false);
   const [burnSessionModalOpen, setBurnSessionModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -57,6 +60,59 @@ export default function App() {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('u2u-theme') || 'dark'; } catch { return 'dark'; }
   });
+
+  // Android chat-only header auto-hide state & timer
+  const [chatHeaderVisible, setChatHeaderVisible] = useState(true);
+  const [_isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const headerHideTimerRef = useRef(null);
+
+  const resetHeaderHideTimer = useCallback(() => {
+    if (headerHideTimerRef.current) {
+      clearTimeout(headerHideTimerRef.current);
+      headerHideTimerRef.current = null;
+    }
+    setChatHeaderVisible(true);
+    // Auto-hide after approximately 3 seconds of inactivity
+    headerHideTimerRef.current = setTimeout(() => {
+      setChatHeaderVisible(false);
+    }, 3000);
+  }, []);
+
+  const handleHeaderMenuChange = useCallback((isOpen) => {
+    setIsHeaderMenuOpen(isOpen);
+    if (isOpen) {
+      if (headerHideTimerRef.current) {
+        clearTimeout(headerHideTimerRef.current);
+        headerHideTimerRef.current = null;
+      }
+      setChatHeaderVisible(true);
+    } else {
+      if (view === 'chat' && isAndroidPlatform()) {
+        resetHeaderHideTimer();
+      }
+    }
+  }, [view, resetHeaderHideTimer]);
+
+  // Start 3-second timer only upon successfully entering active chat; clean up on leave
+  useEffect(() => {
+    if (view === 'chat' && isAndroidPlatform()) {
+      // eslint-disable-next-line react/set-state-in-effect
+      resetHeaderHideTimer();
+    } else {
+      if (headerHideTimerRef.current) {
+        clearTimeout(headerHideTimerRef.current);
+        headerHideTimerRef.current = null;
+      }
+      // eslint-disable-next-line react/set-state-in-effect
+      setChatHeaderVisible(true);
+    }
+    return () => {
+      if (headerHideTimerRef.current) {
+        clearTimeout(headerHideTimerRef.current);
+        headerHideTimerRef.current = null;
+      }
+    };
+  }, [view, resetHeaderHideTimer]);
 
   // Toasts
   const [toasts, setToasts] = useState([]);
@@ -160,9 +216,10 @@ export default function App() {
     setExpiresAt(expAt);
     setAuthTicket(ticket);
 
-    // Immediately sanitize browser URL and clear fragment
+    // Immediately sanitize browser URL and clear fragment (preserving query params)
     try {
-      window.history.replaceState(null, '', '/');
+      const search = window.location.search;
+      window.history.replaceState(null, '', '/' + (search || ''));
     } catch {}
 
     return new Promise(resolve => {
@@ -229,15 +286,21 @@ export default function App() {
   };
 
   const resetSession = () => {
+    if (headerHideTimerRef.current) {
+      clearTimeout(headerHideTimerRef.current);
+      headerHideTimerRef.current = null;
+    }
     setSessionId('');
     setPasscode('');
     setCryptoKey(null);
     setExpiresAt(null);
     setAuthTicket('');
     setJoinToken('');
+    setChatHeaderVisible(true);
     try {
       if (window.location.pathname !== '/') {
-        window.history.replaceState(null, '', '/');
+        const search = window.location.search;
+        window.history.replaceState(null, '', '/' + (search || ''));
       }
     } catch {}
   };
@@ -283,6 +346,9 @@ export default function App() {
         setScreenPrivacyEnabled={setScreenPrivacyEnabled}
         theme={theme}
         setTheme={setTheme}
+        chatHeaderVisible={chatHeaderVisible}
+        onHeaderInteraction={resetHeaderHideTimer}
+        onHeaderMenuChange={handleHeaderMenuChange}
       />
 
       <main className="u2u-main">
@@ -301,6 +367,7 @@ export default function App() {
             onOpenSecurity={() => setSecurityModalOpen(true)}
             onOpenTerms={() => setView('terms')}
             onOpenPrivacy={() => setView('privacy')}
+            onOpenWhatsNew={() => setWhatsNewModalOpen(true)}
           />
         )}
 
@@ -355,6 +422,7 @@ export default function App() {
             setBurnSessionModalOpen={setBurnSessionModalOpen}
             leaveModalOpen={leaveModalOpen}
             setLeaveModalOpen={setLeaveModalOpen}
+            onRevealHeader={resetHeaderHideTimer}
           />
         )}
 
@@ -372,6 +440,7 @@ export default function App() {
       {view !== 'chat' && (
         <SecurityModal isOpen={securityModalOpen} onClose={() => setSecurityModalOpen(false)} />
       )}
+      <WhatsNewModal isOpen={whatsNewModalOpen} onClose={() => setWhatsNewModalOpen(false)} />
 
       {/* Toasts */}
       <div className="toast-container">

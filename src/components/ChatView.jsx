@@ -23,6 +23,7 @@ import {
   playErrorSound
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
+import { isAndroidPlatform } from '../utils/platform';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
 import ImageViewerModal from './modals/ImageViewerModal';
 import SecurityModal from './modals/SecurityModal';
@@ -64,6 +65,7 @@ export default function ChatView({
   clearChatModalOpen, setClearChatModalOpen,
   burnSessionModalOpen, setBurnSessionModalOpen,
   leaveModalOpen, setLeaveModalOpen,
+  onRevealHeader,
 }) {
   const [messages, setMessages] = useState([]);
   const [systemMessages, setSystemMessages] = useState([]);
@@ -83,6 +85,7 @@ export default function ChatView({
   const [voiceTimers, setVoiceTimers] = useState({}); // messageId -> { expiresAt, secondsLeft }
   const [isRecording, setIsRecording] = useState(false);
   const [activeMenuMsgId, setActiveMenuMsgId] = useState(null);
+  const [activeMenuAnchor, setActiveMenuAnchor] = useState(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionPickerTarget, setReactionPickerTarget] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -98,6 +101,45 @@ export default function ChatView({
   const longPressTimerRef = useRef(null);
   // IntersectionObserver for real per-message seen tracking
   const intersectionObserverRef = useRef(null);
+
+  // Pull-down reveal gesture for Android chat header
+  const pullTouchStartYRef = useRef(null);
+  const pullTouchStartXRef = useRef(null);
+  const canPullHeaderRef = useRef(false);
+
+  // Start Android chat header auto-hide behavior when active chat screen mounts
+  useEffect(() => {
+    if (isAndroidPlatform()) {
+      onRevealHeader?.();
+    }
+  }, [onRevealHeader]);
+
+  const handlePullStart = (clientY, clientX) => {
+    if (!isAndroidPlatform() || !onRevealHeader) return;
+    pullTouchStartYRef.current = clientY;
+    pullTouchStartXRef.current = clientX;
+    const vp = viewportRef.current;
+    const isAtTop = !vp || vp.scrollTop <= 20;
+    const isNearTop = clientY <= 220;
+    canPullHeaderRef.current = isAtTop || isNearTop;
+  };
+
+  const handlePullMove = (clientY, clientX) => {
+    if (!canPullHeaderRef.current || pullTouchStartYRef.current === null || !onRevealHeader) return;
+    const deltaY = clientY - pullTouchStartYRef.current;
+    const deltaX = clientX - (pullTouchStartXRef.current || clientX);
+    if (deltaY > 25 && deltaY > Math.abs(deltaX) * 1.2) {
+      onRevealHeader();
+      canPullHeaderRef.current = false;
+      pullTouchStartYRef.current = null;
+    }
+  };
+
+  const handlePullEnd = () => {
+    pullTouchStartYRef.current = null;
+    pullTouchStartXRef.current = null;
+    canPullHeaderRef.current = false;
+  };
   // Track message IDs we've already sent a 'seen' ack for (idempotency)
   const seenMessageIdsRef = useRef(new Set());
   // Ref to always have the latest socket without recreating the observer
@@ -416,7 +458,10 @@ export default function ChatView({
           setImageViewerOpen(false);
           setActiveViewerMsg(null);
         }
-        if (activeMenuMsgId === data.messageId) setActiveMenuMsgId(null);
+        if (activeMenuMsgId === data.messageId) {
+          setActiveMenuMsgId(null);
+          setActiveMenuAnchor(null);
+        }
         if (replyingTo?.id === data.messageId) setReplyingTo(null);
         if (reactionPickerTarget?.id === data.messageId) setReactionPickerTarget(null);
         setMessages(prev => prev.filter(m => m.id !== data.messageId));
@@ -917,7 +962,10 @@ export default function ChatView({
       type: 'unsend', sessionId, messageId, senderId: clientId
     }));
     playUnsentSound();
-    if (activeMenuMsgId === messageId) setActiveMenuMsgId(null);
+    if (activeMenuMsgId === messageId) {
+      setActiveMenuMsgId(null);
+      setActiveMenuAnchor(null);
+    }
     if (replyingTo?.id === messageId) setReplyingTo(null);
     if (reactionPickerTarget?.id === messageId) setReactionPickerTarget(null);
     setMessages(prev => prev.filter(m => m.id !== messageId));
@@ -1044,8 +1092,33 @@ export default function ChatView({
     ...systemMessages.map(s => ({ ...s, itemType: 'system' }))
   ].sort((a, b) => (a.timestamp || a.id) - (b.timestamp || b.id));
 
+  const isAndroidChat = isAndroidPlatform();
+
   return (
-    <div className="chat-container">
+    <div className={`chat-container ${isAndroidChat ? 'chat-android-header-active' : ''}`}>
+      {/* Invisible top touch target to trigger header reveal when pulled/tapped near top */}
+      {isAndroidChat && (
+        <div
+          className="chat-header-pull-trigger"
+          onTouchStart={(e) => {
+            const t = e.touches?.[0];
+            if (t) handlePullStart(t.clientY, t.clientX);
+          }}
+          onTouchMove={(e) => {
+            const t = e.touches?.[0];
+            if (t) handlePullMove(t.clientY, t.clientX);
+          }}
+          onTouchEnd={handlePullEnd}
+          onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
+          onPointerMove={(e) => {
+            if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
+          }}
+          onPointerUp={handlePullEnd}
+          onClick={onRevealHeader}
+          aria-hidden="true"
+        />
+      )}
+
       {connectionStatus === 'reconnecting' && (
         <div className="connection-banner">
           <WifiOff size={14} style={{ color: 'var(--status-warning)' }} />
@@ -1058,6 +1131,20 @@ export default function ChatView({
         className="messages-viewport"
         ref={viewportRef}
         onScroll={handleScroll}
+        onTouchStart={(e) => {
+          const t = e.touches?.[0];
+          if (t) handlePullStart(t.clientY, t.clientX);
+        }}
+        onTouchMove={(e) => {
+          const t = e.touches?.[0];
+          if (t) handlePullMove(t.clientY, t.clientX);
+        }}
+        onTouchEnd={handlePullEnd}
+        onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
+        onPointerMove={(e) => {
+          if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
+        }}
+        onPointerUp={handlePullEnd}
       >
         {allItems.length === 0 ? (
           <div className="chat-empty-state">
@@ -1106,7 +1193,13 @@ export default function ChatView({
                       className={`message-more-btn ${activeMenuMsgId === msg.id ? 'active' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveMenuMsgId(activeMenuMsgId === msg.id ? null : msg.id);
+                        if (activeMenuMsgId === msg.id) {
+                          setActiveMenuMsgId(null);
+                          setActiveMenuAnchor(null);
+                        } else {
+                          setActiveMenuMsgId(msg.id);
+                          setActiveMenuAnchor(e.currentTarget);
+                        }
                       }}
                       aria-label="Message options"
                       title="More options"
@@ -1163,7 +1256,13 @@ export default function ChatView({
                       className={`message-more-btn ${activeMenuMsgId === msg.id ? 'active' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveMenuMsgId(activeMenuMsgId === msg.id ? null : msg.id);
+                        if (activeMenuMsgId === msg.id) {
+                          setActiveMenuMsgId(null);
+                          setActiveMenuAnchor(null);
+                        } else {
+                          setActiveMenuMsgId(msg.id);
+                          setActiveMenuAnchor(e.currentTarget);
+                        }
                       }}
                       aria-label="Message options"
                       title="More options"
@@ -1176,10 +1275,14 @@ export default function ChatView({
                   {activeMenuMsgId === msg.id && (
                     <MessageMenu
                       isOpen={true}
-                      onClose={() => setActiveMenuMsgId(null)}
+                      onClose={() => {
+                        setActiveMenuMsgId(null);
+                        setActiveMenuAnchor(null);
+                      }}
                       targetMessage={msg}
                       isSelf={isSelf}
                       currentUserId={clientId}
+                      anchorEl={activeMenuAnchor}
                       onReply={(target) => {
                         setReplyingTo(target);
                         textareaRef.current?.focus();

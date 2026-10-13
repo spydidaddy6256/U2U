@@ -96,60 +96,60 @@
 }
 
 [data-theme='light'] {
-  --bg-app: #f4f5f8;
-  --bg-surface: rgba(255, 255, 255, 0.75);
-  --bg-surface-elevated: rgba(255, 255, 255, 0.88);
-  --bg-surface-glass: rgba(255, 255, 255, 0.82);
-  --bg-surface-active: rgba(0, 0, 0, 0.05);
-  --bg-input: rgba(240, 242, 246, 0.75);
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-glass: rgba(255, 255, 255, 0.94);
+  --bg-surface-active: #f1f5f9;
+  --bg-input: #f1f5f9;
 
-  --border-subtle: rgba(0, 0, 0, 0.07);
-  --border-active: rgba(0, 0, 0, 0.14);
-  --border-focus: rgba(216, 82, 58, 0.5);
+  --border-subtle: #e2e8f0;
+  --border-active: #cbd5e1;
+  --border-focus: #e05e46;
 
-  --text-primary: #121418;
-  --text-secondary: #585d6d;
-  --text-tertiary: #8a90a0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
 
-  --accent: #d8523a;
-  --accent-hover: #c2432c;
-  --accent-subtle: rgba(216, 82, 58, 0.12);
-  --accent-glow: rgba(216, 82, 58, 0.2);
+  --accent: #d9482e;
+  --accent-hover: #bf3b23;
+  --accent-subtle: rgba(217, 72, 46, 0.1);
+  --accent-glow: rgba(217, 72, 46, 0.22);
   --accent-contrast: #ffffff;
 
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-bg-subtle: rgba(255, 255, 255, 0.4);
-  --glass-bg-elevated: rgba(255, 255, 255, 0.8);
-  --glass-bg-strong: rgba(255, 255, 255, 0.92);
-  --glass-bg-active: rgba(255, 255, 255, 0.95);
-  --glass-panel: rgba(255, 255, 255, 0.85);
-  --glass-panel-heavy: rgba(255, 255, 255, 0.92);
+  --glass-bg: #ffffff;
+  --glass-bg-subtle: #f8fafc;
+  --glass-bg-elevated: #ffffff;
+  --glass-bg-strong: #ffffff;
+  --glass-bg-active: #f1f5f9;
+  --glass-panel: rgba(255, 255, 255, 0.96);
+  --glass-panel-heavy: #ffffff;
   
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-border-subtle: rgba(0, 0, 0, 0.05);
-  --glass-border-light: rgba(0, 0, 0, 0.12);
-  --glass-border-hover: rgba(0, 0, 0, 0.18);
-  --glass-border-active: rgba(216, 82, 58, 0.4);
+  --glass-border: #e2e8f0;
+  --glass-border-subtle: #f1f5f9;
+  --glass-border-light: #cbd5e1;
+  --glass-border-hover: #94a3b8;
+  --glass-border-active: #d9482e;
 
-  --glass-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
-  --glass-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --glass-shadow-lg: 0 20px 48px -8px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  --glass-shadow-floating: 0 16px 36px -6px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --glass-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --glass-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  --glass-shadow-lg: 0 20px 48px -8px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --glass-shadow-floating: 0 16px 36px -6px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.06);
 
-  --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
-  --glass-highlight-subtle: inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
-  --glass-highlight-strong: inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 1);
+  --glass-highlight-subtle: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+  --glass-highlight-strong: inset 0 1px 0 0 rgba(255, 255, 255, 1);
 
-  --bubble-self-bg: linear-gradient(135deg, #1e2025 0%, #2e313a 100%);
+  --bubble-self-bg: linear-gradient(135deg, #e05e46 0%, #c94630 100%);
   --bubble-self-text: #ffffff;
-  --bubble-self-border: rgba(255, 255, 255, 0.18);
-  --bubble-self-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --bubble-self-border: rgba(255, 255, 255, 0.25);
+  --bubble-self-shadow: 0 3px 12px rgba(217, 72, 46, 0.25);
 
-  --bubble-peer-bg: rgba(255, 255, 255, 0.85);
-  --bubble-peer-backdrop: blur(14px);
-  --bubble-peer-text: #18191c;
-  --bubble-peer-border: rgba(0, 0, 0, 0.08);
-  --bubble-peer-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --bubble-peer-bg: #ffffff;
+  --bubble-peer-backdrop: none;
+  --bubble-peer-text: #0f172a;
+  --bubble-peer-border: #e2e8f0;
+  --bubble-peer-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
 
   --specular-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
   --specular-rim-subtle: inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
@@ -330,6 +330,61 @@ button:active {
   position: relative;
   transition: border-color var(--duration-normal) var(--ease-natural),
               background var(--duration-normal) var(--ease-natural);
+}
+
+/* ── Android Chat-Only Floating Header & Auto-Hide Behavior ── */
+.u2u-header.u2u-header-chat-android {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-bottom-left-radius: 22px;
+  border-bottom-right-radius: 22px;
+  border-bottom: 1px solid var(--glass-border-light);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.55), var(--glass-highlight);
+  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 60;
+  will-change: transform, opacity;
+}
+
+.u2u-header.u2u-header-chat-android.u2u-header-chat-hidden {
+  transform: translateY(-105%);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+/* Chat container & viewport padding adjustments when Android floating header is active */
+.chat-container.chat-android-header-active {
+  position: relative;
+}
+
+.chat-container.chat-android-header-active .messages-viewport {
+  padding-top: 68px !important;
+}
+
+/* Invisible top pull-trigger zone (allows pulling down or tapping near top to reveal header) */
+.chat-header-pull-trigger {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 55;
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .u2u-header.u2u-header-chat-android {
+    transition: opacity 0.2s ease !important;
+  }
+  .u2u-header.u2u-header-chat-android.u2u-header-chat-hidden {
+    transform: none !important;
+    opacity: 0 !important;
+  }
 }
 
 .u2u-brand {

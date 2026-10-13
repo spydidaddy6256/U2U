@@ -9,6 +9,7 @@ import {
   Clock
 } from 'lucide-react';
 import { playTickSound } from '../utils/audio';
+import { isAndroidPlatform } from '../utils/platform';
 
 export default function CreateSessionView({
   sessionId,
@@ -99,7 +100,13 @@ export default function CreateSessionView({
   };
 
   const handleCopyJoinLink = async () => {
-    const joinUrl = `${window.location.origin}/join/${joinToken}#${encodeURIComponent(passcode)}`;
+    let joinUrl = `${window.location.origin}/join/${joinToken}#${encodeURIComponent(passcode)}`;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (isAndroidPlatform() || params.get('previewAndroidHeader') === 'true' || localStorage.getItem('u2u_preview_android_header') === 'true') {
+        joinUrl = `${window.location.origin}/join/${joinToken}?previewAndroidHeader=true#${encodeURIComponent(passcode)}`;
+      }
+    } catch {}
     const success = await copyTextToClipboard(joinUrl);
     playTickSound();
     setCopiedJoinLink(true);

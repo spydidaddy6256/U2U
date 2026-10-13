@@ -45,7 +45,7 @@ export default function PwaInstallPrompt() {
 
     // Check for iOS / iPadOS
     if (isIOS) {
-      const timer = setTimeout(() => setVisible(true), 1800);
+      const timer = setTimeout(() => setVisible(true), 2400);
       return () => clearTimeout(timer);
     }
 
@@ -55,7 +55,7 @@ export default function PwaInstallPrompt() {
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setTimeout(() => setVisible(true), 1400);
+      setTimeout(() => setVisible(true), 2400);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -66,7 +66,7 @@ export default function PwaInstallPrompt() {
     if (isAndroid) {
       fallbackTimer = setTimeout(() => {
         setVisible(true);
-      }, 2000);
+      }, 2600);
     }
 
     return () => {

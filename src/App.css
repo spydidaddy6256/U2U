@@ -2247,9 +2247,10 @@
 .message-context-menu {
   position: absolute;
   top: calc(100% + 6px);
-  z-index: 120;
-  min-width: 230px;
-  max-width: 290px;
+  z-index: 2500;
+  min-width: 220px;
+  max-width: min(290px, calc(100vw - 20px));
+  box-sizing: border-box;
   background: var(--glass-panel-heavy);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -2259,6 +2260,29 @@
   padding: 6px;
   transform-origin: top;
   animation: menuPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.message-context-menu.placement-top {
+  transform-origin: bottom;
+  animation: menuPopInTop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.message-context-menu.placement-bottom {
+  transform-origin: top;
+  animation: menuPopInBottom 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.message-context-menu::-webkit-scrollbar {
+  width: 4px;
+}
+
+.message-context-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-context-menu::-webkit-scrollbar-thumb {
+  background: var(--glass-border-light);
+  border-radius: 4px;
 }
 
 .message-context-menu.align-self {
@@ -2277,6 +2301,37 @@
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes menuPopInTop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes menuPopInBottom {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-context-menu,
+  .message-context-menu.placement-top,
+  .message-context-menu.placement-bottom {
+    animation: fadeIn 0.12s ease !important;
+    transform: none !important;
   }
 }
 
@@ -3303,21 +3358,33 @@ body.photo-viewer-active .u2u-header {
 .pwa-install-overlay {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   z-index: 15000;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px));
-  animation: pwaOverlayFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pwaOverlayFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   touch-action: pan-y;
+  overscroll-behavior: contain;
+  will-change: backdrop-filter, opacity;
 }
 
 @keyframes pwaOverlayFadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* Graceful fallback for browsers/environments without backdrop-filter support */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pwa-install-overlay {
+    background: rgba(10, 11, 15, 0.88);
+  }
 }
 
 .pwa-install-dialog {
@@ -3337,6 +3404,10 @@ body.photo-viewer-active .u2u-header {
   z-index: 15001;
   animation: pwaDialogScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: center center;
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @keyframes pwaDialogScaleIn {
@@ -3649,7 +3720,13 @@ body.photo-viewer-active .u2u-header {
 }
 
 [data-theme='light'] .pwa-install-overlay {
-  background: rgba(15, 23, 42, 0.42);
+  background: rgba(15, 23, 42, 0.48);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  [data-theme='light'] .pwa-install-overlay {
+    background: rgba(15, 23, 42, 0.82);
+  }
 }
 
 [data-theme='light'] .pwa-install-dialog {
