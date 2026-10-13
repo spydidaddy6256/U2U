@@ -398,6 +398,7 @@ button:active {
   padding: 4px 6px;
   border-radius: var(--radius-sm);
   transition: opacity var(--duration-micro) var(--ease-natural);
+  flex-shrink: 0;
 }
 
 .u2u-brand:hover {
@@ -454,6 +455,22 @@ button:active {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--duration-normal) var(--ease-natural);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: fit-content;
+}
+
+.u2u-badge-status-text {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u2u-badge-status-label {
+  display: inline;
 }
 
 .u2u-badge-private:hover {
@@ -469,6 +486,7 @@ button:active {
   height: 7px;
   border-radius: 50%;
   position: relative;
+  flex-shrink: 0;
 }
 .status-indicator.connected {
   background-color: var(--status-connected);
@@ -494,6 +512,8 @@ button:active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .u2u-session-timer.warning {
@@ -506,6 +526,14 @@ button:active {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+.header-menu-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .icon-btn {

@@ -64,6 +64,7 @@ export default function App() {
   // Android chat-only header auto-hide state & timer
   const [chatHeaderVisible, setChatHeaderVisible] = useState(true);
   const [_isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const isHeaderMenuOpenRef = useRef(false);
   const headerHideTimerRef = useRef(null);
 
   const resetHeaderHideTimer = useCallback(() => {
@@ -72,13 +73,20 @@ export default function App() {
       headerHideTimerRef.current = null;
     }
     setChatHeaderVisible(true);
+    // Never auto-hide while the header dropdown menu is open
+    if (isHeaderMenuOpenRef.current) {
+      return;
+    }
     // Auto-hide after approximately 3 seconds of inactivity
     headerHideTimerRef.current = setTimeout(() => {
-      setChatHeaderVisible(false);
+      if (!isHeaderMenuOpenRef.current) {
+        setChatHeaderVisible(false);
+      }
     }, 3000);
   }, []);
 
   const handleHeaderMenuChange = useCallback((isOpen) => {
+    isHeaderMenuOpenRef.current = isOpen;
     setIsHeaderMenuOpen(isOpen);
     if (isOpen) {
       if (headerHideTimerRef.current) {

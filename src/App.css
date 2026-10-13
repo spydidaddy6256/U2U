@@ -2080,7 +2080,7 @@
 /* ── Dropdown Menu ── */
 .dropdown-menu {
   position: absolute;
-  top: 54px;
+  top: calc(100% + 8px);
   right: 0;
   background: var(--glass-panel-heavy);
   backdrop-filter: var(--glass-blur);
@@ -2089,8 +2089,9 @@
   border-radius: var(--radius-md);
   padding: 6px;
   min-width: 195px;
+  max-width: min(250px, calc(100vw - 20px));
   box-shadow: var(--glass-shadow-floating), var(--glass-highlight);
-  z-index: 60;
+  z-index: 100;
   animation: fadeInUp 0.15s var(--ease-natural);
 }
 
@@ -3133,7 +3134,39 @@
   .landing-title { font-size: 2.4rem; }
   .flow-card { padding: 26px 20px; border-radius: var(--radius-lg); }
   .message-bubble { max-width: 86%; }
-  .u2u-header { padding: 0 14px; }
+  .u2u-header {
+    padding: 0 max(10px, env(safe-area-inset-right, 10px));
+    padding-left: max(10px, env(safe-area-inset-left, 10px));
+  }
+  .u2u-brand {
+    gap: 6px;
+    padding: 4px 2px;
+  }
+  .u2u-badge-private {
+    padding: 4px 8px;
+    gap: 5px;
+    font-size: 0.74rem;
+    max-width: calc(100vw - 210px);
+  }
+  .u2u-header-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .u2u-header-actions .icon-btn {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+  .u2u-header-actions .icon-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+  .dropdown-menu {
+    top: calc(100% + 6px);
+    right: 0;
+    max-width: min(230px, calc(100vw - 16px));
+    z-index: 100;
+  }
   .messages-viewport { padding: 14px 14px 8px; }
   .composer-wrapper { padding: 8px 12px 14px; }
   .composer-wrapper { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
@@ -3166,6 +3199,44 @@
     width: 36px;
     height: 36px;
     font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .u2u-badge-status-label {
+    display: none;
+  }
+  .u2u-badge-private {
+    max-width: calc(100vw - 195px);
+  }
+}
+
+@media (max-width: 380px) {
+  .u2u-header {
+    padding: 0 6px;
+  }
+  .u2u-brand {
+    gap: 4px;
+  }
+  .u2u-logo-text {
+    font-size: 1rem;
+  }
+  .u2u-badge-private {
+    padding: 3px 6px;
+    gap: 4px;
+    font-size: 0.69rem;
+    max-width: calc(100vw - 170px);
+  }
+  .u2u-header-actions {
+    gap: 2px;
+  }
+  .u2u-header-actions .icon-btn {
+    width: 31px;
+    height: 31px;
+  }
+  .u2u-header-actions .icon-btn svg {
+    width: 16px;
+    height: 16px;
   }
 }
 

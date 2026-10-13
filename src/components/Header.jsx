@@ -48,15 +48,15 @@ export default function Header({
     onHeaderMenuChange?.(menuOpen);
   }, [menuOpen, onHeaderMenuChange]);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click or tap
   useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, []);
 
   // Expiration countdown
@@ -139,12 +139,15 @@ export default function Header({
           title="Click to view end-to-end encryption details"
         >
           <div className={`status-indicator ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'connecting' ? 'connecting' : 'offline'}`} />
-          <span>
-            {connectionStatus === 'connecting' 
-              ? 'Connecting…' 
-              : peerPresent 
-                ? 'Private · Connected' 
-                : 'Private · Waiting'}
+          <span className="u2u-badge-status-text">
+            {connectionStatus === 'connecting' ? (
+              'Connecting…'
+            ) : (
+              <>
+                <span className="u2u-badge-status-label">Private · </span>
+                {peerPresent ? 'Connected' : 'Waiting'}
+              </>
+            )}
           </span>
           {timeRemaining && (
             <span className={`u2u-session-timer ${isWarning ? 'warning' : ''}`} style={{ marginLeft: 6 }}>
@@ -190,12 +193,17 @@ export default function Header({
 
         {/* Chat menu */}
         {view === 'chat' && (
-          <div style={{ position: 'relative' }} ref={menuRef}>
+          <div className="header-menu-container" ref={menuRef}>
             <button 
-              className="icon-btn" 
-              onClick={() => setMenuOpen(!menuOpen)} 
+              className="icon-btn header-menu-btn" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+              }} 
               title="Session options"
               aria-label="Session options"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
             >
               <MoreVertical size={18} />
             </button>
