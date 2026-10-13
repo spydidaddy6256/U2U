@@ -52,6 +52,10 @@ export default function App() {
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [joinToken, setJoinToken] = useState('');
 
+  // Connection & peer presence state for header synchronization
+  const [connectionStatus, setConnectionStatus] = useState('offline');
+  const [peerPresent, setPeerPresent] = useState(false);
+
   // Screen privacy
   const [screenPrivacyEnabled, setScreenPrivacyEnabled] = useState(false);
   const [isWindowBlurred, setIsWindowBlurred] = useState(false);
@@ -140,6 +144,25 @@ export default function App() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 2800);
   };
+
+  // Refresh ticket on token expiration using session credentials
+  const handleRefreshTicket = useCallback(async () => {
+    if (!passcode || !sessionId) return null;
+    try {
+      const pcHash = await hashPasscode(passcode, sessionId);
+      const res = await fetch('/api/session/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, passcodeHash: pcHash, clientId })
+      });
+      const data = await res.json();
+      if (res.ok && data.ticket) {
+        setAuthTicket(data.ticket);
+        return data.ticket;
+      }
+    } catch {}
+    return null;
+  }, [passcode, sessionId, clientId]);
 
   // Apply theme
   useEffect(() => {
@@ -304,6 +327,8 @@ export default function App() {
     setExpiresAt(null);
     setAuthTicket('');
     setJoinToken('');
+    setConnectionStatus('offline');
+    setPeerPresent(false);
     setChatHeaderVisible(true);
     try {
       if (window.location.pathname !== '/') {
@@ -345,6 +370,8 @@ export default function App() {
         setView={setView}
         sessionId={sessionId}
         expiresAt={expiresAt}
+        connectionStatus={view === 'chat' ? connectionStatus : undefined}
+        peerPresent={view === 'chat' ? peerPresent : false}
         onOpenSecurity={() => setSecurityModalOpen(true)}
         onOpenClearChat={() => setClearChatModalOpen(true)}
         onOpenBurnSession={() => setBurnSessionModalOpen(true)}
@@ -418,6 +445,11 @@ export default function App() {
             cryptoKey={cryptoKey}
             clientId={clientId}
             authTicket={authTicket}
+            connectionStatus={connectionStatus}
+            setConnectionStatus={setConnectionStatus}
+            peerPresent={peerPresent}
+            setPeerPresent={setPeerPresent}
+            onRefreshTicket={handleRefreshTicket}
             onLeave={handleLeaveSession}
             onSessionBurned={handleSessionBurned}
             onSessionExpired={handleSessionExpired}

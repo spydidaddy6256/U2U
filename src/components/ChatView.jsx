@@ -60,6 +60,9 @@ function updateMessageStatus(msg, newStatus, extra = {}) {
 
 export default function ChatView({
   sessionId, cryptoKey, clientId, authTicket,
+  connectionStatus: propConnectionStatus, setConnectionStatus: propSetConnectionStatus,
+  peerPresent: propPeerPresent, setPeerPresent: propSetPeerPresent,
+  onRefreshTicket,
   onLeave, onSessionBurned, onSessionExpired, onToast,
   securityModalOpen, setSecurityModalOpen,
   clearChatModalOpen, setClearChatModalOpen,
@@ -71,7 +74,13 @@ export default function ChatView({
   const [systemMessages, setSystemMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isPeerTyping, setIsPeerTyping] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [internalConnectionStatus, setInternalConnectionStatus] = useState('connecting');
+  const connectionStatus = propConnectionStatus !== undefined ? propConnectionStatus : internalConnectionStatus;
+  const setConnectionStatus = propSetConnectionStatus || setInternalConnectionStatus;
+
+  const [internalPeerPresent, setInternalPeerPresent] = useState(false);
+  const _peerPresent = propPeerPresent !== undefined ? propPeerPresent : internalPeerPresent;
+  const setPeerPresent = propSetPeerPresent || setInternalPeerPresent;
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState(null);
   const [activeViewerMsg, setActiveViewerMsg] = useState(null);
@@ -154,6 +163,8 @@ export default function ChatView({
   const deliveredSoundsRef = useRef(new Set());
   const seenSoundsRef = useRef(new Set());
   const peerPresentRef = useRef(false);
+  const lastPongRef = useRef(0);
+  const connectWsRef = useRef(null);
 
   // Stable callback for closing photo preview modal
   const handleClosePhotoPreview = useCallback(() => {
@@ -224,15 +235,39 @@ export default function ChatView({
   // Process incoming WebSocket messages
   const handleWsMessage = useCallback(async (data, ws) => {
     switch (data.type) {
+      case 'pong': {
+        lastPongRef.current = Date.now();
+        break;
+      }
+
       case 'joined': {
+        lastPongRef.current = Date.now();
+        setConnectionStatus('connected');
+
         if (data.reconnectTicket) {
           authTicketRef.current = data.reconnectTicket;
         }
-        if (data.participantsCount >= 2) {
-          onToast("You're both here.");
+
+        // Room chat cleared synchronization across reconnects
+        if (typeof data.chatClearedAt === 'number') {
+          setMessages(prev => prev.filter(m => (m.timestamp || 0) >= data.chatClearedAt));
+          setPhotoTimers({});
+          setVoiceTimers({});
         }
-        // Restore authoritative permanent participant-left status if present
-        if (data.peerLeftStatus) {
+
+        // Accurate presence & removal of transient departure notices
+        if (data.participantsCount >= 2) {
+          peerPresentRef.current = true;
+          setPeerPresent(true);
+          setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
+          onToast("You're both here.");
+        } else {
+          peerPresentRef.current = false;
+          setPeerPresent(false);
+        }
+
+        // Authoritative permanent participant-left status only if peer intentionally left and isn't present
+        if (data.peerLeftStatus && data.participantsCount < 2) {
           const text = data.peerLeftStatus.text || 'User left the session';
           const timestamp = data.peerLeftStatus.timestamp || Date.now();
           setSystemMessages(prev => {
@@ -240,7 +275,8 @@ export default function ChatView({
             return [...prev, { id: 'peer-left-' + timestamp, text, timestamp }];
           });
         }
-        // Replay recent envelopes, restoring server-persisted status (one-way)
+
+        // Replay recent envelopes, restoring server-persisted status & dispatching delivered acks
         if (data.recentEnvelopes?.length > 0) {
           for (const env of data.recentEnvelopes) {
             // Skip unsent/deleted messages completely
@@ -261,6 +297,17 @@ export default function ChatView({
               if (restoredStatus === 'seen') {
                 seenMessageIdsRef.current.add(env.id);
               }
+
+              // Acknowledge delivery to peer for messages received while backgrounded
+              if (env.senderId !== clientId && restoredStatus !== 'seen' && ws?.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'delivered',
+                  sessionId,
+                  messageId: env.id,
+                  senderId: clientId
+                }));
+              }
+
               // Restore voice countdown timer if it's running
               if (env.type === 'voice' && env.voiceExpiresAt && !env.isExpired) {
                 const secLeft = Math.max(0, Math.ceil((env.voiceExpiresAt - Date.now()) / 1000));
@@ -272,8 +319,13 @@ export default function ChatView({
                   }));
                 }
               }
+
               setMessages(prev => {
-                if (prev.some(m => m.id === env.id)) return prev;
+                const existingIdx = prev.findIndex(m => m.id === env.id);
+                if (existingIdx !== -1) {
+                  // Upgrade status if server has higher rank
+                  return prev.map((m, idx) => idx === existingIdx ? updateMessageStatus(m, restoredStatus, { seenAt: env.seenAt || m.seenAt }) : m);
+                }
                 return [...prev, {
                   id: env.id, senderId: env.senderId,
                   timestamp: env.timestamp, type: env.type || 'text',
@@ -301,6 +353,9 @@ export default function ChatView({
       case 'peer_present': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = true;
+        setPeerPresent(true);
+        // Clear any previous "User left the session" notice when peer is actively back
+        setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
         if (!wasPresent) {
           onToast("You're both here.");
           playUserJoinedSound();
@@ -311,6 +366,7 @@ export default function ChatView({
       case 'peer_left': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
+        setPeerPresent(false);
         if (wasPresent) {
           playUserLeftSound();
         }
@@ -321,6 +377,7 @@ export default function ChatView({
       case 'peer_left_intentional': {
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
+        setPeerPresent(false);
         const text = data.text || 'User left the session';
         const timestamp = data.timestamp || Date.now();
         setSystemMessages(prev => {
@@ -559,6 +616,23 @@ export default function ChatView({
       }
 
       case 'error': {
+        if (data.code === 'INVALID_TICKET') {
+          if (onRefreshTicket) {
+            onRefreshTicket().then(newTicket => {
+              if (newTicket) {
+                authTicketRef.current = newTicket;
+                connectWsRef.current?.();
+              }
+            });
+            return;
+          }
+        } else if (data.code === 'NOT_FOUND') {
+          onSessionBurned?.();
+          return;
+        } else if (data.code === 'SESSION_LEFT') {
+          onLeave?.();
+          return;
+        }
         playErrorSound();
         onToast(data.message || 'Something went wrong');
         break;
@@ -566,19 +640,38 @@ export default function ChatView({
 
       default: break;
     }
-  }, [cryptoKey, clientId, sessionId, onToast, onSessionBurned, onSessionExpired, activeViewerMsg, isAtBottom, replyingTo, reactionPickerTarget, activeMenuMsgId]);
+  }, [cryptoKey, clientId, sessionId, onToast, onSessionBurned, onSessionExpired, onRefreshTicket, setConnectionStatus, setPeerPresent, onLeave, activeViewerMsg, isAtBottom, replyingTo, reactionPickerTarget, activeMenuMsgId]);
 
   const handleWsMessageRef = useRef(handleWsMessage);
   useEffect(() => {
     handleWsMessageRef.current = handleWsMessage;
   }, [handleWsMessage]);
 
-  // WebSocket connection with authenticated ticket and auto-reconnect
+  // WebSocket connection with authenticated ticket, automatic reconnect, heartbeat & background/resume listeners
   useEffect(() => {
     let isCancelled = false;
 
     function connectWs() {
       if (isCancelled) return;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      // If existing socket is open and responsive, verify vitality rather than tearing down
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        try {
+          socketRef.current.send(JSON.stringify({ type: 'ping' }));
+          return;
+        } catch {
+          try { socketRef.current.close(); } catch {}
+        }
+      } else if (socketRef.current) {
+        try { socketRef.current.close(); } catch {}
+      }
+
+      setConnectionStatus('connecting');
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       const ws = new WebSocket(wsUrl);
@@ -586,7 +679,7 @@ export default function ChatView({
 
       ws.onopen = () => {
         if (isCancelled) return;
-        setConnectionStatus('connected');
+        lastPongRef.current = Date.now();
         ws.send(JSON.stringify({
           type: 'join',
           sessionId,
@@ -608,20 +701,75 @@ export default function ChatView({
       ws.onclose = () => {
         if (isCancelled) return;
         setConnectionStatus('reconnecting');
+        setPeerPresent(false);
+        peerPresentRef.current = false;
         reconnectTimeoutRef.current = setTimeout(connectWs, 2200);
       };
 
       ws.onerror = () => {};
     }
 
+    connectWsRef.current = connectWs;
     connectWs();
+
+    // Heartbeat: ping server every 20s to keep connection alive through proxies and detect dead sockets
+    const heartbeatInterval = setInterval(() => {
+      if (isCancelled) return;
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        } catch {
+          connectWs();
+          return;
+        }
+        // If no pong or activity received for > 35s, socket is zombie -> reconnect immediately
+        if (Date.now() - lastPongRef.current > 35000) {
+          connectWs();
+        }
+      } else if (!ws || ws.readyState === WebSocket.CLOSED) {
+        connectWs();
+      }
+    }, 20000);
+
+    // App resume / focus / online listeners: immediately recover connection on return from background
+    const handleAppResume = () => {
+      if (isCancelled) return;
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        connectWs();
+      } else {
+        try {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        } catch {
+          connectWs();
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleAppResume();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handleAppResume);
+    window.addEventListener('online', handleAppResume);
+    window.addEventListener('focus', handleAppResume);
 
     return () => {
       isCancelled = true;
+      connectWsRef.current = null;
+      clearInterval(heartbeatInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handleAppResume);
+      window.removeEventListener('online', handleAppResume);
+      window.removeEventListener('focus', handleAppResume);
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       socketRef.current?.close();
     };
-  }, [sessionId, authTicket, clientId]);
+  }, [sessionId, authTicket, clientId, setConnectionStatus, setPeerPresent]);
 
   // Auto-scroll when new messages arrive
   useEffect(() => {

@@ -455,6 +455,293 @@ async function runTests() {
     wsCreator.close();
     wsJoiner.close();
 
+    // ----------------------------------------------------
+    // CHECK 11: BACKGROUND/RESUME SESSION LIFECYCLE & RESILIENCE
+    // ----------------------------------------------------
+    console.log('\n--- 11. BACKGROUND/RESUME SESSION LIFECYCLE & RESILIENCE ---');
+
+    // 1. Create a fresh session for lifecycle verification
+    const lifeSessionId = generateValidSessionId();
+    const lifePasscode = 'LIFE1234';
+    const lifeHash = await hashPasscode(lifePasscode, lifeSessionId);
+
+    const lifeCreateRes = await fetch(`${BASE_URL}/api/session/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: lifeSessionId, passcodeHash: lifeHash })
+    });
+    const lifeCreateData = await lifeCreateRes.json();
+    assert(lifeCreateRes.ok && Boolean(lifeCreateData.ticket), 'Lifecycle verification session created');
+
+    // 2. Creator connects
+    const wsLifeCreator = new WebSocket(WS_URL);
+    let lifeCreatorRollingTicket = null;
+    await new Promise((resolve, reject) => {
+      wsLifeCreator.on('open', () => {
+        wsLifeCreator.send(JSON.stringify({
+          type: 'join',
+          sessionId: lifeSessionId,
+          ticket: lifeCreateData.ticket,
+          clientId: 'life-creator'
+        }));
+      });
+      wsLifeCreator.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'joined') {
+          lifeCreatorRollingTicket = data.reconnectTicket;
+          resolve();
+        }
+      });
+      wsLifeCreator.on('error', reject);
+    });
+
+    // 3. Joiner claims token & connects
+    const lifeClaimRes = await fetch(`${BASE_URL}/api/session/join/${lifeCreateData.joinToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: 'life-joiner' })
+    });
+    const lifeClaimData = await lifeClaimRes.json();
+    const wsLifeJoiner = new WebSocket(WS_URL);
+    let joinerRollingTicket2 = null;
+    await new Promise((resolve, reject) => {
+      wsLifeJoiner.on('open', () => {
+        wsLifeJoiner.send(JSON.stringify({
+          type: 'join',
+          sessionId: lifeSessionId,
+          ticket: lifeClaimData.ticket,
+          clientId: 'life-joiner'
+        }));
+      });
+      wsLifeJoiner.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'joined') {
+          joinerRollingTicket2 = data.reconnectTicket;
+          resolve();
+        }
+      });
+      wsLifeJoiner.on('error', reject);
+    });
+
+    // 4. Test bidirectional messaging while both connected
+    const msgInitId = `msg-init-${Date.now()}`;
+    await new Promise((resolve) => {
+      wsLifeJoiner.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'message' && data.envelope?.id === msgInitId) {
+          assert(true, 'Initial message exchanged between participants before backgrounding');
+          resolve();
+        }
+      });
+      wsLifeCreator.send(JSON.stringify({
+        type: 'message',
+        sessionId: lifeSessionId,
+        envelope: {
+          id: msgInitId,
+          type: 'text',
+          senderId: 'life-creator',
+          iv: 'AQIDBAUGBwgJCgsMDQ4PEA==',
+          ciphertext: 'HELLO_INITIAL',
+          timestamp: Date.now()
+        }
+      }));
+    });
+
+    // 5. Creator backgrounds/disconnects temporarily
+    let peerLeftReceived = false;
+    let peerLeftPermanentReceived = false;
+    const joinerListener = (msg) => {
+      const data = JSON.parse(msg.toString());
+      if (data.type === 'peer_left') {
+        peerLeftReceived = true;
+      }
+      if (data.type === 'peer_left_permanent') {
+        peerLeftPermanentReceived = true;
+      }
+    };
+    wsLifeJoiner.on('message', joinerListener);
+
+    wsLifeCreator.close();
+    await sleep(300);
+
+    assert(peerLeftReceived, 'Temporary disconnect emits peer_left (presence offline/waiting)');
+    assert(!peerLeftPermanentReceived, 'Temporary disconnect does NOT prematurely emit peer_left_permanent');
+
+    // 6. Joiner sends message while Creator is disconnected
+    const msgDuringDisconnectId = `msg-offline-${Date.now()}`;
+    let joinerReceivedAck = false;
+    await new Promise((resolve) => {
+      const ackListener = (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'message_ack' && data.id === msgDuringDisconnectId) {
+          joinerReceivedAck = true;
+          wsLifeJoiner.off('message', ackListener);
+          resolve();
+        }
+      };
+      wsLifeJoiner.on('message', ackListener);
+      wsLifeJoiner.send(JSON.stringify({
+        type: 'message',
+        sessionId: lifeSessionId,
+        envelope: {
+          id: msgDuringDisconnectId,
+          type: 'text',
+          senderId: 'life-joiner',
+          iv: 'AQIDBAUGBwgJCgsMDQ4PEA==',
+          ciphertext: 'SENT_WHILE_OFFLINE',
+          timestamp: Date.now()
+        }
+      }));
+    });
+    assert(joinerReceivedAck, 'Remaining participant remains able to send messages during peer disconnect');
+
+    // 7. Creator resumes / reconnects using rolling reconnect ticket
+    const wsLifeCreatorResumed = new WebSocket(WS_URL);
+    let creatorResumedJoined = false;
+    let creatorSawPeerLeftStatus = false;
+    let creatorReceivedOfflineMsg = false;
+    let joinerSawPeerJoined = false;
+
+    wsLifeJoiner.on('message', (msg) => {
+      const data = JSON.parse(msg.toString());
+      if (data.type === 'peer_joined' || data.type === 'peer_present') {
+        joinerSawPeerJoined = true;
+      }
+    });
+
+    await new Promise((resolve, reject) => {
+      wsLifeCreatorResumed.on('open', () => {
+        wsLifeCreatorResumed.send(JSON.stringify({
+          type: 'join',
+          sessionId: lifeSessionId,
+          ticket: lifeCreatorRollingTicket,
+          clientId: 'life-creator'
+        }));
+      });
+      wsLifeCreatorResumed.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'joined') {
+          creatorResumedJoined = true;
+          lifeCreatorRollingTicket = data.reconnectTicket;
+          creatorSawPeerLeftStatus = Boolean(data.peerLeftStatus);
+          if (data.recentEnvelopes?.some(e => e.id === msgDuringDisconnectId)) {
+            creatorReceivedOfflineMsg = true;
+          }
+          resolve();
+        }
+      });
+      wsLifeCreatorResumed.on('error', reject);
+    });
+
+    await sleep(200);
+
+    assert(creatorResumedJoined, 'Creator successfully reconnected on app resume');
+    assert(!creatorSawPeerLeftStatus, 'Resuming participant does NOT receive false peerLeftStatus ("User left")');
+    assert(creatorReceivedOfflineMsg, 'Resuming participant receives messages sent while backgrounded');
+    assert(joinerSawPeerJoined, 'Remaining participant receives peer_joined on peer resume');
+
+    // 8. Bidirectional messaging works after resume
+    const msgPostResumeId = `msg-post-resume-${Date.now()}`;
+    await new Promise((resolve) => {
+      wsLifeJoiner.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'message' && data.envelope?.id === msgPostResumeId) {
+          assert(true, 'Resumed participant successfully sends messages to peer');
+          resolve();
+        }
+      });
+      wsLifeCreatorResumed.send(JSON.stringify({
+        type: 'message',
+        sessionId: lifeSessionId,
+        envelope: {
+          id: msgPostResumeId,
+          type: 'text',
+          senderId: 'life-creator',
+          iv: 'AQIDBAUGBwgJCgsMDQ4PEA==',
+          ciphertext: 'AFTER_RESUME',
+          timestamp: Date.now()
+        }
+      }));
+    });
+
+    // 9. Superseded socket race test: open another connection while previous is active
+    const wsLifeCreatorDuplicate = new WebSocket(WS_URL);
+    await new Promise((resolve, reject) => {
+      wsLifeCreatorDuplicate.on('open', () => {
+        wsLifeCreatorDuplicate.send(JSON.stringify({
+          type: 'join',
+          sessionId: lifeSessionId,
+          ticket: lifeCreatorRollingTicket,
+          clientId: 'life-creator'
+        }));
+      });
+      wsLifeCreatorDuplicate.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'joined') {
+          lifeCreatorRollingTicket = data.reconnectTicket;
+          resolve();
+        }
+      });
+      wsLifeCreatorDuplicate.on('error', reject);
+    });
+
+    await sleep(200);
+    assert(wsLifeCreatorDuplicate.readyState === WebSocket.OPEN, 'Superseded socket replaced cleanly without duplicate participant error');
+
+    // 10. Ping / Pong heartbeat test
+    await new Promise((resolve) => {
+      wsLifeCreatorDuplicate.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'pong') {
+          assert(true, 'Server responds to ping with pong heartbeat');
+          resolve();
+        }
+      });
+      wsLifeCreatorDuplicate.send(JSON.stringify({ type: 'ping' }));
+    });
+
+    // 11. Intentional leave test
+    await new Promise((resolve) => {
+      wsLifeCreatorDuplicate.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'peer_left_permanent') {
+          assert(true, 'Intentional leave correctly broadcasts peer_left_permanent');
+          resolve();
+        }
+      });
+      wsLifeJoiner.send(JSON.stringify({
+        type: 'leave_session',
+        sessionId: lifeSessionId,
+        clientId: 'life-joiner'
+      }));
+    });
+
+    // Joiner tries to re-enter after intentional leave -> rejected with SESSION_LEFT
+    const wsJoinerReenter = new WebSocket(WS_URL);
+    await new Promise((resolve) => {
+      wsJoinerReenter.on('open', () => {
+        wsJoinerReenter.send(JSON.stringify({
+          type: 'join',
+          sessionId: lifeSessionId,
+          ticket: joinerRollingTicket2,
+          clientId: 'life-joiner'
+        }));
+      });
+      wsJoinerReenter.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'error' && data.code === 'SESSION_LEFT') {
+          assert(true, 'Rejoin attempt after intentional leave strictly rejected with SESSION_LEFT');
+          wsJoinerReenter.close();
+          resolve();
+        }
+      });
+    });
+
+    // Clean up lifecycle sockets
+    wsLifeCreatorResumed.close();
+    wsLifeCreatorDuplicate.close();
+    wsLifeJoiner.close();
+
   } catch (err) {
     console.error('Fatal error during test run:', err);
     failed++;

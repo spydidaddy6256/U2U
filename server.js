@@ -723,6 +723,17 @@ wss.on('connection', (ws, req) => {
             return;
           }
 
+          // If client already intentionally left this session, deny re-entry
+          if (room.leftClientIds?.has(clientId)) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_LEFT',
+              message: 'You have left this session.'
+            }));
+            ws.close();
+            return;
+          }
+
           // Strict 2-participant limit
           const isReconnecting = room.participants.has(clientId);
           if (!isReconnecting && room.participants.size >= 2) {
@@ -740,12 +751,12 @@ wss.on('connection', (ws, req) => {
           currentSessionId = cleanId;
           currentClientId = clientId;
 
-          // Issue rolling reconnect ticket valid for 5 minutes
+          // Issue rolling reconnect ticket (1-hour window, capped at room expiry)
           const reconnectTicket = crypto.randomBytes(24).toString('hex');
           authTickets.set(reconnectTicket, {
             sessionId: cleanId,
             clientId,
-            expiresAt: Date.now() + 5 * 60 * 1000
+            expiresAt: Math.min(room.expiresAt, Date.now() + 60 * 60 * 1000)
           });
 
           // Cancel disconnect timer if reconnected
@@ -754,6 +765,16 @@ wss.on('connection', (ws, req) => {
             room.disconnectTimers.delete(clientId);
           }
 
+          // Safely supersede any existing connection for this clientId without race conditions
+          const existingWs = room.participants.get(clientId);
+          if (existingWs && existingWs !== ws) {
+            existingWs.isReplaced = true;
+            try {
+              existingWs.close();
+            } catch {}
+          }
+
+          ws.isReplaced = false;
           room.participants.set(clientId, ws);
 
           // Check voice & photo timeouts on join
@@ -794,7 +815,7 @@ wss.on('connection', (ws, req) => {
               return m;
             });
 
-          // Confirm join with rolling reconnect ticket
+          // Confirm join with rolling reconnect ticket and room chat-cleared state
           ws.send(JSON.stringify({
             type: 'joined',
             sessionId: cleanId,
@@ -802,7 +823,8 @@ wss.on('connection', (ws, req) => {
             participantsCount: room.participants.size,
             peerLeftStatus: room.peerLeftStatus || null,
             reconnectTicket,
-            recentEnvelopes: sanitizedEnvelopes
+            recentEnvelopes: sanitizedEnvelopes,
+            chatClearedAt: room.chatClearedAt || null
           }));
 
           // Notify peer
@@ -817,6 +839,13 @@ wss.on('connection', (ws, req) => {
                 participantsCount: room.participants.size
               }));
             }
+          }
+          break;
+        }
+
+        case 'ping': {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong' }));
           }
           break;
         }
@@ -1218,6 +1247,7 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (room) {
+            room.chatClearedAt = Date.now();
             for (const timer of room.photoTimers.values()) clearTimeout(timer);
             room.photoTimers.clear();
             for (const timer of room.voiceTimers.values()) clearTimeout(timer);
@@ -1276,11 +1306,22 @@ wss.on('connection', (ws, req) => {
       if (conns.size === 0) ipWsConnections.delete(clientIp);
     }
 
+    // If this socket was superseded by a newer connection from the same client, ignore
+    if (ws.isReplaced) {
+      return;
+    }
+
     if (currentSessionId && currentClientId) {
       const room = rooms.get(currentSessionId);
       if (room) {
+        // Only delete participant and notify if this closing socket is the ACTIVE one
+        if (room.participants.get(currentClientId) !== ws) {
+          return;
+        }
+
         room.participants.delete(currentClientId);
 
+        // Notify remaining participants of temporary disconnect (presence becomes waiting/offline)
         for (const pWs of room.participants.values()) {
           if (pWs.readyState === WebSocket.OPEN) {
             pWs.send(JSON.stringify({
@@ -1288,40 +1329,6 @@ wss.on('connection', (ws, req) => {
               participantsCount: room.participants.size
             }));
           }
-        }
-
-        if (!room.burned && !room.leftClientIds?.has(currentClientId) && !room.peerLeftStatus && room.participants.size > 0) {
-          if (!room.disconnectTimers) room.disconnectTimers = new Map();
-          if (room.disconnectTimers.has(currentClientId)) {
-            clearTimeout(room.disconnectTimers.get(currentClientId));
-          }
-
-          const leavingClientId = currentClientId;
-          const timer = setTimeout(() => {
-            room.disconnectTimers?.delete(leavingClientId);
-            if (!room.burned && !room.participants.has(leavingClientId) && !room.peerLeftStatus && room.participants.size > 0) {
-              if (!room.leftClientIds) room.leftClientIds = new Set();
-              room.leftClientIds.add(leavingClientId);
-
-              const leaveTimestamp = Date.now();
-              room.peerLeftStatus = {
-                text: 'User left the session',
-                timestamp: leaveTimestamp
-              };
-
-              for (const pWs of room.participants.values()) {
-                if (pWs.readyState === WebSocket.OPEN) {
-                  pWs.send(JSON.stringify({
-                    type: 'peer_left_permanent',
-                    text: 'User left the session',
-                    timestamp: leaveTimestamp
-                  }));
-                }
-              }
-            }
-          }, 5000);
-
-          room.disconnectTimers.set(currentClientId, timer);
         }
       }
     }

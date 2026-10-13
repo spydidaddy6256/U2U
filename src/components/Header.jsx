@@ -10,9 +10,7 @@ import {
   MoreVertical, 
   Trash2, 
   Flame, 
-  Info, 
-  LogOut,
-  Clock
+  LogOut
 } from 'lucide-react';
 import { isAudioEnabled, setAudioEnabled, playTickSound } from '../utils/audio';
 import { isAndroidPlatform } from '../utils/platform';
@@ -20,7 +18,7 @@ import { isAndroidPlatform } from '../utils/platform';
 export default function Header({
   view,
   setView,
-  sessionId,
+  sessionId: _sessionId,
   expiresAt,
   connectionStatus,
   peerPresent,
@@ -240,7 +238,14 @@ export default function Header({
 
                 <button 
                   className="dropdown-item" 
-                  onClick={() => { setMenuOpen(false); onOpenLeave ? onOpenLeave() : onLeaveSession(); }}
+                  onClick={() => { 
+                    setMenuOpen(false); 
+                    if (onOpenLeave) {
+                      onOpenLeave();
+                    } else {
+                      onLeaveSession();
+                    }
+                  }}
                 >
                   <LogOut size={16} />
                   <span>Leave Session</span>
