@@ -24,6 +24,9 @@ import {
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
 import { isAndroidPlatform } from '../utils/platform';
+import { getWsUrl } from '../utils/apiConfig';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
 import ImageViewerModal from './modals/ImageViewerModal';
 import SecurityModal from './modals/SecurityModal';
@@ -171,16 +174,37 @@ export default function ChatView({
     setPendingPhoto(null);
   }, []);
 
-  // Scroll helpers
+  // Scroll helpers: operate directly on the messages viewport without shifting parent layouts
+  const isAutoScrollingRef = useRef(false);
+
   const scrollToBottom = useCallback((smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    const vp = viewportRef.current;
+    if (!vp) return;
+    isAutoScrollingRef.current = true;
+    if (smooth) {
+      vp.scrollTo({ top: vp.scrollHeight, behavior: 'smooth' });
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+        if (viewportRef.current) {
+          const dist = viewportRef.current.scrollHeight - viewportRef.current.scrollTop - viewportRef.current.clientHeight;
+          setIsAtBottom(dist < 80);
+        }
+      }, 350);
+    } else {
+      vp.scrollTop = vp.scrollHeight;
+      isAutoScrollingRef.current = false;
+      requestAnimationFrame(() => {
+        setIsAtBottom(true);
+      });
+    }
   }, []);
 
   const handleScroll = useCallback(() => {
+    if (isAutoScrollingRef.current) return;
     const vp = viewportRef.current;
     if (!vp) return;
     const distFromBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
-    const atBottom = distFromBottom < 60;
+    const atBottom = distFromBottom < 80;
     setIsAtBottom(atBottom);
     if (atBottom) setNewMsgCount(0);
   }, []);
@@ -672,8 +696,7 @@ export default function ChatView({
 
       setConnectionStatus('connecting');
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const wsUrl = getWsUrl();
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
@@ -758,6 +781,17 @@ export default function ChatView({
     window.addEventListener('online', handleAppResume);
     window.addEventListener('focus', handleAppResume);
 
+    let capAppStateHandle = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          handleAppResume();
+        }
+      }).then((handle) => {
+        capAppStateHandle = handle;
+      }).catch(() => {});
+    }
+
     return () => {
       isCancelled = true;
       connectWsRef.current = null;
@@ -766,15 +800,33 @@ export default function ChatView({
       window.removeEventListener('pageshow', handleAppResume);
       window.removeEventListener('online', handleAppResume);
       window.removeEventListener('focus', handleAppResume);
+      if (capAppStateHandle) {
+        capAppStateHandle.remove();
+      }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       socketRef.current?.close();
     };
   }, [sessionId, authTicket, clientId, setConnectionStatus, setPeerPresent]);
 
-  // Auto-scroll when new messages arrive
+  // Initial scroll to bottom when messages first load
+  const initialScrollDoneRef = useRef(false);
   useEffect(() => {
-    if (isAtBottom) scrollToBottom();
-  }, [messages, isPeerTyping, isAtBottom, scrollToBottom]);
+    if (messages.length > 0 && !initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      scrollToBottom(false);
+    }
+  }, [messages, scrollToBottom]);
+
+  // Auto-scroll when new messages arrive (only if user is already near bottom)
+  const prevMessagesCountRef = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length > prevMessagesCountRef.current) {
+      if (isAtBottom) {
+        scrollToBottom(true);
+      }
+    }
+    prevMessagesCountRef.current = messages.length;
+  }, [messages, isAtBottom, scrollToBottom]);
 
   // ── IntersectionObserver for real seen receipts ──
   // Observes each peer message bubble. When it enters the viewport with
@@ -1232,13 +1284,18 @@ export default function ChatView({
     );
   }
 
-  // Merge messages and system messages in chronological order
+  // Merge messages and system messages in continuous chronological order
   const allItems = [
     ...messages
       .filter(m => !m.isUnsent && !(m.type === 'voice' && (m.isExpired || (voiceTimers[m.id] && voiceTimers[m.id].secondsLeft <= 0))))
       .map(m => ({ ...m, itemType: 'message' })),
     ...systemMessages.map(s => ({ ...s, itemType: 'system' }))
-  ].sort((a, b) => (a.timestamp || a.id) - (b.timestamp || b.id));
+  ].sort((a, b) => {
+    const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+    const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
 
   const isAndroidChat = isAndroidPlatform();
 
@@ -1307,7 +1364,9 @@ export default function ChatView({
             <p>This is a private conversation between two people. Say hello.</p>
           </div>
         ) : (
-          allItems.map((item) => {
+          <>
+            <div className="messages-spacer" aria-hidden="true" />
+            {allItems.map((item) => {
             if (item.itemType === 'system') {
               return (
                 <div key={item.id} className="system-message">
@@ -1479,7 +1538,8 @@ export default function ChatView({
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
