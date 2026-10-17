@@ -1,0 +1,27 @@
+{
+  "appId": "com.u2u.app",
+  "appName": "U2U",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "DARK"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0e0f12"
+    }
+  }
+}

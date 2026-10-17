@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export default function PrivacyView({ onBack }) {
   return (

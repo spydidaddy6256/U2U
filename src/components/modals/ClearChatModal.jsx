@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { playTickSound } from '../../utils/audio';
 
 export default function ClearChatModal({ isOpen, onClose, onConfirm }) {

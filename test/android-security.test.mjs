@@ -93,6 +93,7 @@ async function runAndroidSecurityTests() {
 
     // In Node (non-native), test browser fallback
     assert(typeof isNativeAndroid === 'function', 'isNativeAndroid helper exists');
+    assert(typeof getInviteOrigin === 'function', 'getInviteOrigin helper exists');
     const browserApi = getApiUrl('/api/session/create');
     assert(browserApi === '/api/session/create', 'Browser mode preserves relative /api path');
 
@@ -258,8 +259,8 @@ async function runAndroidSecurityTests() {
       { id: 'msg-1', timestamp: 1700000001, text: 'First (incoming)', isOutgoing: false },
       { id: 'msg-4', timestamp: 1700000004, text: 'Fourth (outgoing)', isOutgoing: true },
       { id: 'msg-2', timestamp: 1700000002, text: 'Second (outgoing)', isOutgoing: true },
-      { id: 'msg-fallback-b', timestamp: undefined, id: 'b', text: 'Fallback B' },
-      { id: 'msg-fallback-a', timestamp: undefined, id: 'a', text: 'Fallback A' }
+      { id: 'b', timestamp: undefined, text: 'Fallback B' },
+      { id: 'a', timestamp: undefined, text: 'Fallback A' }
     ];
 
     const sorted = sortItems(mockMessages);

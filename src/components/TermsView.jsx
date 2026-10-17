@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Shield, FileText } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export default function TermsView({ onBack }) {
   return (

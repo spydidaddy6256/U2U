@@ -31,6 +31,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// Capacitor & local mobile client CORS middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (origin === 'https://localhost' || origin === 'http://localhost' || origin.startsWith('capacitor://'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 // JSON Body Parser with strict limit
 app.use(express.json({ limit: '10mb' }));
 
@@ -74,6 +88,33 @@ const joinRateTracker = new Map();       // ip -> { count, resetAt, lockedUntil 
 const ipWsConnections = new Map();       // ip -> Set<ws>
 const ipWsConnectAttempts = new Map();   // ip -> { count, resetAt }
 const healthRateTracker = new Map();     // ip -> { count, resetAt }
+
+// Manual Operator Maintenance Mode Configuration (Disabled by default)
+const maintenanceMode = {
+  enabled: process.env.MAINTENANCE_MODE === 'true' || false,
+  message: process.env.MAINTENANCE_MESSAGE || 'U2U is temporarily undergoing scheduled maintenance. Existing sessions are preserved and service will resume shortly.',
+  estimatedReturn: process.env.MAINTENANCE_ESTIMATED_RETURN || null
+};
+
+// Operator Maintenance Secret (Server-side deployment env variable only; never exposed to frontend)
+const OPERATOR_SECRET = process.env.OPERATOR_MAINTENANCE_SECRET || process.env.ADMIN_SECRET || 'u2u-internal-operator-key-dev';
+
+// Zero-Knowledge Permanent Profile In-Memory Storage
+// Map<profileId, { profileId, username, avatar, authProof, createdAt }>
+const permanentProfiles = new Map();
+
+// Maintenance Mode Interceptor Middleware
+function checkMaintenance(req, res, next) {
+  if (maintenanceMode.enabled) {
+    return res.status(503).json({
+      error: 'Service Temporarily Unavailable: Scheduled Maintenance',
+      maintenance: true,
+      message: maintenanceMode.message,
+      estimatedReturn: maintenanceMode.estimatedReturn
+    });
+  }
+  next();
+}
 
 // Secure Join Token mappings
 const joinTokens = new Map(); // token -> sessionId
@@ -283,8 +324,156 @@ setInterval(() => {
   }
 }, 30 * 1000);
 
+// Maintenance Status (Public query)
+app.get('/api/maintenance/status', (req, res) => {
+  res.json({
+    maintenance: maintenanceMode.enabled,
+    enabled: maintenanceMode.enabled,
+    message: maintenanceMode.message,
+    estimatedReturn: maintenanceMode.estimatedReturn
+  });
+});
+
+// Maintenance Control (Authorized Operator only via header / Bearer token / body secret)
+app.post('/api/admin/maintenance', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const reqSecret = req.headers['x-operator-secret'] || token || req.body?.operatorSecret;
+
+  if (!reqSecret || reqSecret !== OPERATOR_SECRET) {
+    return res.status(403).json({ error: 'Unauthorized operator access' });
+  }
+
+  const { enabled, message, estimatedReturn } = req.body;
+  if (typeof enabled === 'boolean') {
+    maintenanceMode.enabled = enabled;
+  }
+  if (typeof message === 'string' && message.trim()) {
+    maintenanceMode.message = message.trim();
+  }
+  if (estimatedReturn !== undefined) {
+    maintenanceMode.estimatedReturn = estimatedReturn ? String(estimatedReturn).trim() : null;
+  }
+
+  res.json({
+    success: true,
+    maintenance: maintenanceMode.enabled,
+    enabled: maintenanceMode.enabled,
+    message: maintenanceMode.message,
+    estimatedReturn: maintenanceMode.estimatedReturn
+  });
+});
+
+// Permanent Profiles: Register (Zero-Knowledge)
+app.post('/api/profile/register', (req, res) => {
+  if (maintenanceMode.enabled) {
+    return res.status(503).json({ error: 'Maintenance mode enabled', maintenance: true });
+  }
+
+  const { profileId, username, avatar, authProof } = req.body;
+  if (!profileId || typeof profileId !== 'string' || !/^u2u-[a-f0-9]{16}$/.test(profileId)) {
+    return res.status(400).json({ error: 'Invalid profile ID format' });
+  }
+  if (!username || typeof username !== 'string' || username.trim().length < 2 || username.trim().length > 24) {
+    return res.status(400).json({ error: 'Username must be between 2 and 24 characters' });
+  }
+  if (!authProof || typeof authProof !== 'string' || !/^[a-f0-9]{64}$/.test(authProof)) {
+    return res.status(400).json({ error: 'Valid cryptographic authentication proof required' });
+  }
+  if (avatar && typeof avatar !== 'string') {
+    return res.status(400).json({ error: 'Invalid avatar format' });
+  }
+
+  const cleanUsername = username.replace(/<[^>]*>/g, '').trim().slice(0, 24);
+  const cleanAvatar = avatar ? avatar.slice(0, 2000000) : 'neon-neko';
+
+  if (permanentProfiles.has(profileId)) {
+    return res.status(409).json({ error: 'Profile ID already registered' });
+  }
+
+  for (const p of permanentProfiles.values()) {
+    if (p.username.toLowerCase() === cleanUsername.toLowerCase()) {
+      return res.status(409).json({ error: 'Username is already taken' });
+    }
+  }
+
+  const authHash = crypto.createHash('sha256').update(`U2U-SERVER-PROOF:${authProof}`).digest('hex');
+
+  permanentProfiles.set(profileId, {
+    profileId,
+    username: cleanUsername,
+    avatar: cleanAvatar,
+    authHash,
+    createdAt: Date.now()
+  });
+
+  res.json({
+    success: true,
+    profileId,
+    username: cleanUsername,
+    avatar: cleanAvatar
+  });
+});
+
+// Permanent Profiles: Verify Existence
+app.post('/api/profile/verify', (req, res) => {
+  const { profileId, authProof } = req.body;
+  if (!profileId || typeof profileId !== 'string') {
+    return res.status(400).json({ error: 'Profile ID required' });
+  }
+  const profile = permanentProfiles.get(profileId);
+  if (!profile) {
+    return res.status(404).json({ exists: false, error: 'Profile not found' });
+  }
+  if (authProof) {
+    const authHash = crypto.createHash('sha256').update(`U2U-SERVER-PROOF:${authProof}`).digest('hex');
+    if (profile.authHash !== authHash) {
+      return res.status(403).json({ error: 'Invalid cryptographic authentication proof' });
+    }
+  }
+  res.json({
+    exists: true,
+    profile: {
+      profileId: profile.profileId,
+      username: profile.username,
+      avatar: profile.avatar
+    },
+    profileId: profile.profileId,
+    username: profile.username,
+    avatar: profile.avatar
+  });
+});
+
+// Permanent Profiles: Delete (Irreversible by design)
+app.post('/api/profile/delete', (req, res) => {
+  const { profileId, authProof } = req.body;
+  if (!profileId || typeof profileId !== 'string' || !/^u2u-[a-f0-9]{16}$/.test(profileId)) {
+    return res.status(400).json({ error: 'Invalid profile ID format' });
+  }
+  if (!authProof || typeof authProof !== 'string' || !/^[a-f0-9]{64}$/.test(authProof)) {
+    return res.status(400).json({ error: 'Cryptographic proof of possession required for deletion' });
+  }
+
+  const profile = permanentProfiles.get(profileId);
+  if (!profile) {
+    return res.status(404).json({ error: 'Profile not found' });
+  }
+  const authHash = crypto.createHash('sha256').update(`U2U-SERVER-PROOF:${authProof}`).digest('hex');
+  if (profile.authHash !== authHash) {
+    return res.status(403).json({ error: 'Invalid cryptographic authentication proof' });
+  }
+
+  permanentProfiles.delete(profileId);
+
+  res.json({
+    success: true,
+    deleted: true,
+    message: 'Profile has been irreversibly deleted from server records'
+  });
+});
+
 // API 1: Create Session (Zero-Knowledge: Server NEVER receives or stores passcode)
-app.post('/api/session/create', (req, res) => {
+app.post('/api/session/create', checkMaintenance, (req, res) => {
   const ip = getClientIp(req);
   const rateCheck = checkCreateRateLimit(ip);
   if (!rateCheck.allowed) {
@@ -359,7 +548,7 @@ app.post('/api/session/create', (req, res) => {
 });
 
 // API 2: Authenticate & Join Session (Strict Server-Side Verification + Rate Limiting)
-app.post('/api/session/auth', (req, res) => {
+app.post('/api/session/auth', checkMaintenance, (req, res) => {
   const ip = getClientIp(req);
   const { sessionId, passcodeHash, clientId } = req.body;
 
@@ -424,7 +613,7 @@ app.post('/api/session/auth', (req, res) => {
 });
 
 // API 3: Verify Join Token Status
-app.get('/api/session/join/:token', (req, res) => {
+app.get('/api/session/join/:token', checkMaintenance, (req, res) => {
   const { token } = req.params;
   const now = Date.now();
 
@@ -480,7 +669,7 @@ app.get('/api/session/join/:token', (req, res) => {
 });
 
 // API 4: Claim Join Token (Zero-Knowledge: Passcode is NEVER transmitted or returned)
-app.post('/api/session/join/:token', (req, res) => {
+app.post('/api/session/join/:token', checkMaintenance, (req, res) => {
   const { token } = req.params;
   const { clientId } = req.body;
   const ip = getClientIp(req);
@@ -815,6 +1004,14 @@ wss.on('connection', (ws, req) => {
               return m;
             });
 
+          // Extract any identities already registered in the room
+          const existingIdentities = {};
+          if (room.identities) {
+            for (const [pId, idObj] of room.identities.entries()) {
+              if (pId !== clientId) existingIdentities[pId] = idObj;
+            }
+          }
+
           // Confirm join with rolling reconnect ticket and room chat-cleared state
           ws.send(JSON.stringify({
             type: 'joined',
@@ -824,7 +1021,8 @@ wss.on('connection', (ws, req) => {
             peerLeftStatus: room.peerLeftStatus || null,
             reconnectTicket,
             recentEnvelopes: sanitizedEnvelopes,
-            chatClearedAt: room.chatClearedAt || null
+            chatClearedAt: room.chatClearedAt || null,
+            peerIdentities: existingIdentities
           }));
 
           // Notify peer
@@ -846,6 +1044,35 @@ wss.on('connection', (ws, req) => {
         case 'ping': {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'pong' }));
+          }
+          break;
+        }
+
+        case 'identity': {
+          if (!isAuthenticated || !currentSessionId) return;
+          const room = rooms.get(currentSessionId);
+          if (!room) return;
+
+          const { identity } = msg;
+          if (!identity || typeof identity !== 'object') return;
+
+          const displayName = typeof identity.displayName === 'string'
+            ? identity.displayName.replace(/<[^>]*>/g, '').trim().slice(0, 24)
+            : 'Anonymous';
+          const avatar = typeof identity.avatar === 'string' ? identity.avatar.slice(0, 2000000) : 'neon-neko';
+          const sanitized = { displayName, avatar };
+
+          if (!room.identities) room.identities = new Map();
+          room.identities.set(currentClientId, sanitized);
+
+          for (const [pId, pWs] of room.participants.entries()) {
+            if (pId !== currentClientId && pWs.readyState === WebSocket.OPEN) {
+              pWs.send(JSON.stringify({
+                type: 'peer_identity',
+                senderId: currentClientId,
+                identity: sanitized
+              }));
+            }
           }
           break;
         }
@@ -1284,6 +1511,9 @@ wss.on('connection', (ws, req) => {
             if (room.joinToken) {
               joinTokens.delete(room.joinToken);
               usedTokens.delete(room.joinToken);
+            }
+            if (room.identities) {
+              room.identities.clear();
             }
             rooms.delete(currentSessionId);
           }

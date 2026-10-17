@@ -54,10 +54,15 @@ export default function MessageMenu({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // Viewport boundaries: safe from top header and bottom composer
+    // Viewport boundaries: safe from top header, identity subbar, and bottom composer
     const headerEl = document.querySelector('.u2u-header');
+    const subbarEl = document.querySelector('.u2u-identity-subbar');
     const headerRect = headerEl ? headerEl.getBoundingClientRect() : null;
-    const safeTop = Math.max(8, (headerRect && headerRect.bottom > 0) ? headerRect.bottom + 6 : 8);
+    const subbarRect = subbarEl ? subbarEl.getBoundingClientRect() : null;
+    let safeTop = Math.max(8, (headerRect && headerRect.bottom > 0) ? headerRect.bottom + 6 : 8);
+    if (subbarRect && subbarRect.bottom > safeTop) {
+      safeTop = subbarRect.bottom + 6;
+    }
 
     const composerEl = document.querySelector('.composer-wrapper') || document.querySelector('.composer-bar');
     const composerRect = composerEl ? composerEl.getBoundingClientRect() : null;

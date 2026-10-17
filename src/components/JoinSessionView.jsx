@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, KeyRound, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
-import { playTickSound } from '../utils/audio';
+import { ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function JoinSessionView({
   onJoinSubmit,

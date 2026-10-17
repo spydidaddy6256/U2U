@@ -92,13 +92,20 @@ export default function CinematicLaunch({ onComplete }) {
         {/* 3D Floating Logo Container */}
         <div className="launch-logo-3d-container">
           <div className="launch-logo-assembly">
-            {/* Real high-resolution U2U logo asset with vignette mask */}
+            {/* High-performance local U2U brand mark with exact dimensions */}
             <img
-              src="/icon-512x512.png"
+              src="/icon-192x192.png"
               alt="U2U"
               className="launch-logo-base-image"
+              width="160"
+              height="160"
               draggable="false"
               loading="eager"
+              decoding="async"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = '/favicon.svg';
+              }}
             />
 
             {/* Subsurface glowing cores for the two orange-red spheres */}

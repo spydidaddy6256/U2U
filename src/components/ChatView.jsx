@@ -72,6 +72,9 @@ export default function ChatView({
   burnSessionModalOpen, setBurnSessionModalOpen,
   leaveModalOpen, setLeaveModalOpen,
   onRevealHeader,
+  selfIdentity,
+  onPeerIdentityChange,
+  onScrollDirectionChange,
 }) {
   const [messages, setMessages] = useState([]);
   const [systemMessages, setSystemMessages] = useState([]);
@@ -113,6 +116,10 @@ export default function ChatView({
   const longPressTimerRef = useRef(null);
   // IntersectionObserver for real per-message seen tracking
   const intersectionObserverRef = useRef(null);
+  const selfIdentityRef = useRef(selfIdentity);
+  useEffect(() => {
+    selfIdentityRef.current = selfIdentity;
+  }, [selfIdentity]);
 
   // Pull-down reveal gesture for Android chat header
   const pullTouchStartYRef = useRef(null);
@@ -200,15 +207,29 @@ export default function ChatView({
     }
   }, []);
 
+  const lastScrollTopRef = useRef(0);
   const handleScroll = useCallback(() => {
     if (isAutoScrollingRef.current) return;
     const vp = viewportRef.current;
     if (!vp) return;
-    const distFromBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
+    const currentScrollTop = vp.scrollTop;
+    const delta = currentScrollTop - lastScrollTopRef.current;
+
+    // Filter minor jitter; notify on noticeable up or down scroll
+    if (Math.abs(delta) > 12) {
+      if (delta > 0 && currentScrollTop > 40) {
+        onScrollDirectionChange?.('down');
+      } else if (delta < 0) {
+        onScrollDirectionChange?.('up');
+      }
+      lastScrollTopRef.current = currentScrollTop;
+    }
+
+    const distFromBottom = vp.scrollHeight - currentScrollTop - vp.clientHeight;
     const atBottom = distFromBottom < 80;
     setIsAtBottom(atBottom);
     if (atBottom) setNewMsgCount(0);
-  }, []);
+  }, [onScrollDirectionChange]);
 
   // Photo timers tick effect
   useEffect(() => {
@@ -664,9 +685,27 @@ export default function ChatView({
         break;
       }
 
+      case 'peer_identity': {
+        if (data.senderId !== clientId && data.identity) {
+          onPeerIdentityChange?.(data.identity);
+        }
+        break;
+      }
+
+      case 'peerIdentities': {
+        if (data.identities) {
+          for (const [id, iden] of Object.entries(data.identities)) {
+            if (id !== clientId && iden) {
+              onPeerIdentityChange?.(iden);
+            }
+          }
+        }
+        break;
+      }
+
       default: break;
     }
-  }, [cryptoKey, clientId, sessionId, onToast, onSessionBurned, onSessionExpired, onRefreshTicket, setConnectionStatus, setPeerPresent, onLeave, activeViewerMsg, isAtBottom, replyingTo, reactionPickerTarget, activeMenuMsgId]);
+  }, [cryptoKey, clientId, sessionId, onToast, onSessionBurned, onSessionExpired, onRefreshTicket, setConnectionStatus, setPeerPresent, onLeave, activeViewerMsg, isAtBottom, replyingTo, reactionPickerTarget, activeMenuMsgId, onPeerIdentityChange]);
 
   const handleWsMessageRef = useRef(handleWsMessage);
   useEffect(() => {
@@ -711,6 +750,14 @@ export default function ChatView({
           ticket: authTicketRef.current || authTicket,
           clientId
         }));
+        if (selfIdentityRef.current) {
+          ws.send(JSON.stringify({
+            type: 'identity',
+            sessionId,
+            clientId,
+            identity: selfIdentityRef.current
+          }));
+        }
       };
 
       ws.onmessage = async (event) => {
@@ -809,6 +856,18 @@ export default function ChatView({
       socketRef.current?.close();
     };
   }, [sessionId, authTicket, clientId, setConnectionStatus, setPeerPresent]);
+
+  // Synchronize identity updates with peer if changed during session
+  useEffect(() => {
+    if (selfIdentity && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'identity',
+        sessionId,
+        clientId,
+        identity: selfIdentity
+      }));
+    }
+  }, [selfIdentity, sessionId, clientId]);
 
   // On initial chat entry or session re-entry, show the beginning/top of the conversation
   const initialScrollDoneRef = useRef(false);
@@ -1641,6 +1700,11 @@ export default function ChatView({
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              autoComplete="on"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck={true}
+              enterKeyHint="send"
             />
 
             {/* Dedicated U2U Emoji Picker Button */}

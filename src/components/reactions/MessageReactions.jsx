@@ -15,7 +15,7 @@ export default function MessageReactions({
 }) {
   if (!reactions || typeof reactions !== 'object') return null;
 
-  const entries = Object.entries(reactions).filter(([_, senders]) => Array.isArray(senders) && senders.length > 0);
+  const entries = Object.entries(reactions).filter(([, senders]) => Array.isArray(senders) && senders.length > 0);
   if (entries.length === 0) return null;
 
   return (

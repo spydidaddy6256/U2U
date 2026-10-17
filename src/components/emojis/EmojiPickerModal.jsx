@@ -39,7 +39,18 @@ export default function EmojiPickerModal({
 }) {
   const [activeCategory, setActiveCategory] = useState('u2u-originals');
   const [searchQuery, setSearchQuery] = useState('');
-  const [recentEmojis, setRecentEmojis] = useState([]);
+  const [recentEmojis, setRecentEmojis] = useState(() => {
+    try {
+      const saved = localStorage.getItem(RECENT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.slice(0, MAX_RECENT);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return [];
+  });
   const [previewEmoji, setPreviewEmoji] = useState(null);
 
   const pickerRef = useRef(null);
@@ -47,31 +58,19 @@ export default function EmojiPickerModal({
   const categoryNavRef = useRef(null);
   const scrollBodyRef = useRef(null);
 
-  // Load recently used emojis from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(RECENT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setRecentEmojis(parsed.slice(0, MAX_RECENT));
-        }
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }, [isOpen]);
-
   // Focus search input when opened on desktop
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (window.innerWidth > 768 && searchInputRef.current) {
           searchInputRef.current.focus();
         }
       }, 80);
+      return () => clearTimeout(timer);
     } else {
+      // eslint-disable-next-line react/set-state-in-effect
       setSearchQuery('');
+      // eslint-disable-next-line react/set-state-in-effect
       setPreviewEmoji(null);
     }
   }, [isOpen]);

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ShieldCheck, Check, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 
 export default function SecurityModal({ isOpen, onClose }) {
   useEffect(() => {

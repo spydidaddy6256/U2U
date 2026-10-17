@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, AlertCircle, ShieldCheck, KeyRound } from 'lucide-react';
 import { playTickSound, playErrorSound } from '../utils/audio';
+import { getApiUrl } from '../utils/apiConfig';
 
 export default function JoinLinkView({
   token,
@@ -8,7 +9,7 @@ export default function JoinLinkView({
   onJoinSuccess,
   onCreateClick,
   onGoHome,
-  onToast
+  _onToast
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,7 +29,7 @@ export default function JoinLinkView({
 
     async function checkStatus() {
       try {
-        const res = await fetch(`/api/session/join/${token}`);
+        const res = await fetch(getApiUrl(`/api/session/join/${token}`));
         const data = await res.json();
 
         if (!isMounted) return;
@@ -69,7 +70,7 @@ export default function JoinLinkView({
     playTickSound();
 
     try {
-      const res = await fetch(`/api/session/join/${token}`, {
+      const res = await fetch(getApiUrl(`/api/session/join/${token}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId })

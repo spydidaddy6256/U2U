@@ -371,6 +371,7 @@ export function VoiceNoteBubble({ msg, isSelf, voiceTimer, onPlaybackEnded }) {
   // Determine active timer (from voiceTimer prop or falling back to msg timestamps)
   const activeTimer = voiceTimer || (msg.voiceExpiresAt && !msg.isExpired ? {
     expiresAt: msg.voiceExpiresAt,
+    // eslint-disable-next-line react/purity
     secondsLeft: Math.max(0, Math.ceil((msg.voiceExpiresAt - Date.now()) / 1000)),
     timerType: msg.voiceTimerType || (msg.voiceEnded ? 'listened' : 'unread')
   } : null);

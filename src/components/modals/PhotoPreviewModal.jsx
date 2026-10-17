@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Eye, ShieldCheck, X } from 'lucide-react';
 import { playTickSound } from '../../utils/audio';
 

@@ -9,10 +9,20 @@
     "start": "node server.js",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node test/security.test.mjs",
-    "preview": "vite preview"
+    "test:web": "node test/security.test.mjs",
+    "test:android": "node test/android-security.test.mjs",
+    "test:upgrade": "node test/product-upgrade.test.mjs",
+    "test": "node test/android-security.test.mjs && node test/security.test.mjs && node test/product-upgrade.test.mjs",
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync android",
+    "cap:build": "npm run cap:sync && cd android && gradlew assembleDebug",
+    "cap:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/status-bar": "^8.0.4",
     "express": "^5.2.1",
     "lucide-react": "^1.50.0",
     "react": "^19.2.8",
@@ -20,6 +30,8 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
