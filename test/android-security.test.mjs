@@ -157,12 +157,12 @@ async function runAndroidSecurityTests() {
 
     delete globalThis.window;
 
-    // 5. MainActivity FLAG_SECURE audit
-    console.log('\n--- 5. MAINACTIVITY HARDENING AUDIT ---');
+    // 5. MainActivity Screenshot Compatibility Audit (FLAG_SECURE must NOT be configured)
+    console.log('\n--- 5. MAINACTIVITY SCREENSHOT COMPATIBILITY AUDIT ---');
     const mainActivityPath = path.join(rootDir, 'android/app/src/main/java/com/u2u/app/MainActivity.java');
     assert(fs.existsSync(mainActivityPath), 'MainActivity.java exists');
     const mainActivityContent = fs.readFileSync(mainActivityPath, 'utf8');
-    assert(mainActivityContent.includes('FLAG_SECURE'), 'MainActivity configures FLAG_SECURE against screenshots and recents leakage');
+    assert(!mainActivityContent.includes('FLAG_SECURE'), 'MainActivity does not configure FLAG_SECURE, permitting device screenshots');
 
     // 6. Chat Layout, Spacing & Message Positioning Regression Audit
     console.log('\n--- 6. CHAT LAYOUT & MESSAGE POSITIONING REGRESSION AUDIT ---');

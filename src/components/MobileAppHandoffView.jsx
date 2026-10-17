@@ -40,7 +40,7 @@ export default function MobileAppHandoffView({
         </h1>
 
         <p className="mobile-handoff-description">
-          To protect your privacy with hardware-level screenshot prevention and resilient background connection, mobile conversations require the official U2U Android app.
+          For end-to-end encrypted messaging with resilient background connection on mobile devices, conversations require the official U2U Android app.
         </p>
 
         {token && (

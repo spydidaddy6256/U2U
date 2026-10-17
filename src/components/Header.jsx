@@ -3,8 +3,6 @@ import {
   ShieldCheck,
   Volume2,
   VolumeX,
-  Eye,
-  EyeOff,
   Sun,
   Moon,
   Trash2,
@@ -29,8 +27,6 @@ export default function Header({
   onOpenBurnSession,
   onOpenLeave,
   onLeaveSession,
-  screenPrivacyEnabled,
-  setScreenPrivacyEnabled,
   theme,
   setTheme,
   chatHeaderVisible = true,
@@ -230,17 +226,6 @@ export default function Header({
                 {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 <span>Sound Effects: {soundOn ? 'Enabled' : 'Muted'}</span>
               </button>
-
-              {view === 'chat' && (
-                <button 
-                  type="button"
-                  className="dropdown-item" 
-                  onClick={() => { setMenuOpen(false); setScreenPrivacyEnabled(!screenPrivacyEnabled); }}
-                >
-                  {screenPrivacyEnabled ? <EyeOff size={16} /> : <Eye size={16} />}
-                  <span>Screen Privacy Shield: {screenPrivacyEnabled ? 'Active' : 'Off'}</span>
-                </button>
-              )}
 
               <button 
                 type="button"

@@ -5,7 +5,6 @@ import CreateSessionView from './components/CreateSessionView';
 import JoinSessionView from './components/JoinSessionView';
 import ChatView from './components/ChatView';
 import ExpiredView from './components/ExpiredView';
-import ScreenPrivacyShield from './components/ScreenPrivacyShield';
 import TermsView from './components/TermsView';
 import PrivacyView from './components/PrivacyView';
 import SecurityModal from './components/modals/SecurityModal';
@@ -100,10 +99,6 @@ export default function App() {
   // Connection & peer presence state for header synchronization
   const [connectionStatus, setConnectionStatus] = useState('offline');
   const [peerPresent, setPeerPresent] = useState(false);
-
-  // Screen privacy
-  const [screenPrivacyEnabled, setScreenPrivacyEnabled] = useState(false);
-  const [isWindowBlurred, setIsWindowBlurred] = useState(false);
 
   // Theme
   const [theme, setTheme] = useState(() => {
@@ -240,24 +235,6 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('u2u-theme', theme); } catch {}
   }, [theme]);
-
-  // Screen privacy: blur on tab change
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.hidden && screenPrivacyEnabled && view === 'chat') {
-        setIsWindowBlurred(true);
-      }
-    };
-    const handleBlur = () => {
-      if (screenPrivacyEnabled && view === 'chat') setIsWindowBlurred(true);
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [screenPrivacyEnabled, view]);
 
   // Native Android hardware back-button and StatusBar integration
   const lastBackPressRef = useRef(0);
@@ -674,8 +651,6 @@ export default function App() {
         onOpenBurnSession={() => setBurnSessionModalOpen(true)}
         onOpenLeave={() => setLeaveModalOpen(true)}
         onLeaveSession={handleLeaveSession}
-        screenPrivacyEnabled={screenPrivacyEnabled}
-        setScreenPrivacyEnabled={setScreenPrivacyEnabled}
         theme={theme}
         setTheme={setTheme}
         chatHeaderVisible={chatHeaderVisible}
@@ -802,11 +777,6 @@ export default function App() {
 
             {view === 'expired' && (
               <ExpiredView onCreateNew={handleStartCreate} />
-            )}
-
-            {/* Screen Privacy Shield */}
-            {screenPrivacyEnabled && isWindowBlurred && view === 'chat' && (
-              <ScreenPrivacyShield onDismiss={() => setIsWindowBlurred(false)} />
             )}
           </>
         )}

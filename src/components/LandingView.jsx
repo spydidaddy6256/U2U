@@ -115,7 +115,7 @@ export default function LandingView({
     },
     {
       q: 'How does Android installation work?',
-      a: 'U2U for Android runs as a secure native package (or PWA) with hardware-enforced screenshot prevention (FLAG_SECURE) and background reconnection handling. On mobile devices, invitation links hand off directly into the installed app.'
+      a: 'U2U for Android runs as a secure native package with client-side end-to-end encryption and background reconnection handling. On mobile devices, invitation links hand off directly into the installed app.'
     },
     {
       q: 'What happens if the network disconnects?',
