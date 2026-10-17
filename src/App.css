@@ -523,7 +523,7 @@
   animation: fadeIn 0.2s var(--ease-natural);
 }
 
-/* Messages Scroll Area */
+/* Messages Scroll Area — Aligns to top across desktop and mobile */
 .messages-viewport {
   flex: 1;
   min-height: 0;
@@ -532,16 +532,15 @@
   padding: 22px 20px 10px;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
-/* Flexible top spacer to anchor messages to bottom without flex-end scroll bugs */
+/* Spacer disabled: conversations start at top across both desktop and Android */
 .messages-spacer {
-  flex: 1 1 auto;
-  min-height: 0;
-  pointer-events: none;
+  display: none;
 }
 
 /* ── Empty State ── */

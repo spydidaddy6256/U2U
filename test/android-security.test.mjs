@@ -181,13 +181,19 @@ async function runAndroidSecurityTests() {
     assert(indexCss.includes('min-height: 0;'), 'src/index.css contains min-height: 0 for .u2u-main flex containment');
     assert(indexCss.includes('100dvh'), 'src/index.css configures 100dvh for dynamic mobile viewport');
     assert(appCss.includes('.messages-viewport'), 'src/App.css defines .messages-viewport');
-    assert(appCss.includes('.messages-spacer'), 'src/App.css defines .messages-spacer for bottom anchoring');
+    assert(appCss.includes('justify-content: flex-start;'), 'src/App.css sets justify-content: flex-start to pack messages at the top');
+    assert(!appCss.match(/\.messages-spacer\s*\{[^}]*flex:\s*1/i), 'src/App.css removes flex: 1 bottom-anchoring from .messages-spacer');
     assert(appCss.includes('overflow-y: auto;'), 'src/App.css sets overflow-y: auto for scrollable message list');
 
-    // Ensure message list container does not distribute messages vertically with space-between/around
+    // Ensure message list container does not distribute messages vertically with space-between/around or bottom anchoring
     const viewportBlock = appCss.match(/\.messages-viewport\s*\{[^}]+\}/)?.[0] || '';
     assert(!viewportBlock.includes('space-between'), '.messages-viewport avoids justify-content: space-between');
     assert(!viewportBlock.includes('space-around'), '.messages-viewport avoids justify-content: space-around');
+    assert(!viewportBlock.includes('flex-end'), '.messages-viewport avoids justify-content: flex-end');
+
+    // Verify ChatView structure: no bottom-anchoring spacer in DOM and no unconditional mount scrollToBottom
+    assert(!chatView.includes('<div className="messages-spacer"'), 'ChatView does not render bottom-anchoring .messages-spacer in message list');
+    assert(!chatView.includes('scrollToBottom(false)'), 'ChatView does not unconditionally force scroll to bottom on mount');
 
     assert(appCss.includes('.composer-wrapper'), 'src/App.css defines .composer-wrapper');
     assert(appCss.includes('flex-shrink: 0;'), 'src/App.css sets flex-shrink: 0 for composer-wrapper to avoid shrinking or overlapping');
@@ -195,6 +201,47 @@ async function runAndroidSecurityTests() {
     // Verify incoming and outgoing alignment rules
     assert(appCss.includes('.message-wrapper.peer') && appCss.includes('align-items: flex-start;'), 'Incoming messages align left (.message-wrapper.peer { align-items: flex-start; })');
     assert(appCss.includes('.message-wrapper.self') && appCss.includes('align-items: flex-end;'), 'Outgoing messages align right (.message-wrapper.self { align-items: flex-end; })');
+
+    // Cross-platform chat start positioning regression test: verify short conversation starts at top on both platforms
+    const simulateChatLayout = (platform, messages, viewportHeight = 800) => {
+      const paddingTop = platform === 'android' ? 68 : 22;
+      const messageHeight = 44;
+      const messageMargin = 5;
+
+      const positions = [];
+      let currentTop = paddingTop;
+      for (let i = 0; i < messages.length; i++) {
+        positions.push({
+          id: messages[i].id,
+          top: currentTop,
+          bottom: currentTop + messageHeight
+        });
+        currentTop += messageHeight + messageMargin;
+      }
+      return {
+        platform,
+        firstMessageTop: positions[0]?.top ?? paddingTop,
+        lastMessageBottom: positions[positions.length - 1]?.bottom ?? paddingTop,
+        viewportHeight,
+        startsAtTop: (positions[0]?.top ?? 0) < 100,
+        isBottomAnchored: (positions[positions.length - 1]?.bottom ?? 0) >= viewportHeight - 100
+      };
+    };
+
+    const shortConversation = [
+      { id: 'msg-1', text: 'Hello', isOutgoing: false },
+      { id: 'msg-2', text: 'Hi there', isOutgoing: true }
+    ];
+
+    const desktopLayout = simulateChatLayout('desktop', shortConversation, 800);
+    const androidLayout = simulateChatLayout('android', shortConversation, 800);
+
+    assert(desktopLayout.startsAtTop === true, 'Desktop: short conversation starts at the top (top < 100px)');
+    assert(desktopLayout.isBottomAnchored === false, 'Desktop: short conversation is NOT anchored to bottom (messages start at top)');
+    assert(androidLayout.startsAtTop === true, 'Android: short conversation starts at the top (top < 100px, 68px below floating header)');
+    assert(androidLayout.isBottomAnchored === false, 'Android: short conversation is NOT anchored to bottom (behaves like desktop)');
+    assert(Math.abs(desktopLayout.firstMessageTop - 22) < 5, 'Desktop first message aligns at 22px top padding');
+    assert(Math.abs(androidLayout.firstMessageTop - 68) < 5, 'Android first message aligns at 68px header padding');
 
     // Verify chronological sorting function robustness
     const sortItems = (items) => {

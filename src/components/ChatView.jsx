@@ -168,6 +168,7 @@ export default function ChatView({
   const peerPresentRef = useRef(false);
   const lastPongRef = useRef(0);
   const connectWsRef = useRef(null);
+  const initialHistoryLoadedRef = useRef(false);
 
   // Stable callback for closing photo preview modal
   const handleClosePhotoPreview = useCallback(() => {
@@ -370,6 +371,7 @@ export default function ChatView({
             } catch {}
           }
         }
+        initialHistoryLoadedRef.current = true;
         break;
       }
 
@@ -808,19 +810,38 @@ export default function ChatView({
     };
   }, [sessionId, authTicket, clientId, setConnectionStatus, setPeerPresent]);
 
-  // Initial scroll to bottom when messages first load
+  // On initial chat entry or session re-entry, show the beginning/top of the conversation
   const initialScrollDoneRef = useRef(false);
   useEffect(() => {
-    if (messages.length > 0 && !initialScrollDoneRef.current) {
+    if (!initialScrollDoneRef.current && viewportRef.current) {
       initialScrollDoneRef.current = true;
-      scrollToBottom(false);
+      viewportRef.current.scrollTop = 0;
+      const vp = viewportRef.current;
+      const dist = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
+      setIsAtBottom(dist < 80);
     }
-  }, [messages, scrollToBottom]);
+  }, [messages.length]);
+
+  // Keep isAtBottom updated with actual scroll distance when messages change
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const dist = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
+    setIsAtBottom(dist < 80);
+  }, [messages.length]);
+
+  // Enable auto-scroll for incoming messages after initial render/history window
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      initialHistoryLoadedRef.current = true;
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Auto-scroll when new messages arrive (only if user is already near bottom)
   const prevMessagesCountRef = useRef(messages.length);
   useEffect(() => {
-    if (messages.length > prevMessagesCountRef.current) {
+    if (initialHistoryLoadedRef.current && messages.length > prevMessagesCountRef.current) {
       if (isAtBottom) {
         scrollToBottom(true);
       }
@@ -1364,9 +1385,7 @@ export default function ChatView({
             <p>This is a private conversation between two people. Say hello.</p>
           </div>
         ) : (
-          <>
-            <div className="messages-spacer" aria-hidden="true" />
-            {allItems.map((item) => {
+          allItems.map((item) => {
             if (item.itemType === 'system') {
               return (
                 <div key={item.id} className="system-message">
@@ -1538,8 +1557,7 @@ export default function ChatView({
                 </div>
               </div>
             );
-          })}
-          </>
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
