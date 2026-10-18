@@ -1473,10 +1473,16 @@ export default function ChatView({
                     )}
 
                     {/* Native inline timestamp & receipt inside bubble */}
-                    <div className="native-bubble-meta" aria-hidden="true">
+                    <div
+                      className="native-bubble-meta"
+                      aria-label={`Sent ${formatFullTime(msg.timestamp)}${isSelf ? `, status ${msg.status}` : ''}`}
+                    >
                       <span className="native-bubble-time">{formatContextualTime(msg.timestamp)}</span>
                       {isSelf && (
                         <MessageStatus status={msg.status} seenAt={msg.seenAt} />
+                      )}
+                      {msg.status === 'error' && (
+                        <AlertCircle size={11} style={{ color: 'var(--coral)', marginLeft: 2 }} aria-label="Send failed" />
                       )}
                     </div>
                   </div>
@@ -1630,6 +1636,7 @@ export default function ChatView({
           />
         ) : (
           <div className="composer-bar">
+            {/* 1. Attachment button */}
             <button
               className="composer-add-btn"
               onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)}
@@ -1639,6 +1646,7 @@ export default function ChatView({
               <Plus size={19} />
             </button>
 
+            {/* 2. Text input */}
             <textarea
               ref={textareaRef}
               className="composer-input"
@@ -1654,7 +1662,7 @@ export default function ChatView({
               enterKeyHint="send"
             />
 
-            {/* Dedicated U2U Emoji Picker Button */}
+            {/* 3. Dedicated U2U Emoji Picker Button */}
             <button
               type="button"
               className={`composer-emoji-btn ${emojiPickerOpen ? 'active' : ''}`}
@@ -1662,58 +1670,34 @@ export default function ChatView({
               title="U2U Emojis"
               aria-label="Open U2U emoji picker"
             >
-              <Smile size={18} />
+              <Smile size={19} />
             </button>
 
-            {/* Controls: Native renders both Mic & round Send arrow; Web preserves original toggling */}
-            {isNative ? (
-              <>
-                <button
-                  type="button"
-                  className="composer-mic-btn native-mic-btn"
-                  onClick={() => setIsRecording(true)}
-                  title="Send a voice note"
-                  aria-label="Record voice note"
-                >
-                  <Mic size={19} />
-                </button>
-                <button
-                  type="button"
-                  className="composer-send-btn native-send-btn"
-                  onClick={handleSendMessage}
-                  disabled={!inputText.trim()}
-                  title="Send message"
-                  aria-label="Send"
-                >
-                  <ArrowUp size={18} />
-                </button>
-              </>
-            ) : (
-              <>
-                {/* Mic button — shown when input is empty */}
-                {!inputText.trim() && (
-                  <button
-                    className="composer-mic-btn"
-                    onClick={() => setIsRecording(true)}
-                    title="Send a voice note"
-                    aria-label="Record voice note"
-                  >
-                    <Mic size={18} />
-                  </button>
-                )}
+            {/* 4. Mic button — active when input is empty */}
+            {!inputText.trim() && (
+              <button
+                type="button"
+                className="composer-mic-btn"
+                onClick={() => setIsRecording(true)}
+                title="Send a voice note"
+                aria-label="Record voice note"
+              >
+                <Mic size={19} />
+              </button>
+            )}
 
-                {/* Send button — shown when there is text */}
-                {inputText.trim() && (
-                  <button
-                    className="composer-send-btn"
-                    onClick={handleSendMessage}
-                    title="Send message"
-                    aria-label="Send"
-                  >
-                    <ArrowUp size={18} />
-                  </button>
-                )}
-              </>
+            {/* 5. Send button — active when input has text */}
+            {inputText.trim() && (
+              <button
+                type="button"
+                className="composer-send-btn"
+                onClick={handleSendMessage}
+                disabled={!inputText.trim()}
+                title="Send message"
+                aria-label="Send"
+              >
+                <ArrowUp size={18} />
+              </button>
             )}
           </div>
         )}

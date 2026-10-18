@@ -786,7 +786,27 @@ html.u2u-native .composer-send-btn:not(:disabled):active {
 }
 
 html.u2u-native .composer-emoji-btn {
-  display: none !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  border-radius: 50% !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: transform 0.15s ease, color 0.15s ease !important;
+}
+
+html.u2u-native .composer-emoji-btn:active {
+  color: var(--coral) !important;
+  transform: scale(0.95) !important;
+}
+
+html.u2u-native .composer-emoji-btn.active {
+  color: var(--coral) !important;
 }
 
 /* Typing & New Messages indicator */
@@ -805,4 +825,403 @@ html.u2u-native .new-messages-pill {
   border-radius: var(--radius-pill) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   8. Phase 4: Remaining Screens, Modals & Dialogs (Native)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Flow Views (Create Session, Join Session, Join Link, Expired) */
+html.u2u-native .flow-wrapper {
+  background: var(--bg) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  min-height: 100% !important;
+  padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 24px)) !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html.u2u-native .flow-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  padding: 28px 22px !important;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45) !important;
+  width: 100% !important;
+  max-width: 440px !important;
+  box-sizing: border-box !important;
+  margin: auto 0 !important;
+}
+
+html.u2u-native .flow-header h2 {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 8px !important;
+}
+
+html.u2u-native .flow-header p {
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+/* Credential Blocks & Value Boxes (Create Session) */
+html.u2u-native .credential-block {
+  margin-bottom: 16px !important;
+}
+
+html.u2u-native .credential-label {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--muted) !important;
+  margin-bottom: 6px !important;
+}
+
+html.u2u-native .credential-box {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  padding: 10px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+html.u2u-native .credential-value {
+  font-family: var(--font-sans) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+  letter-spacing: 0.5px !important;
+}
+
+html.u2u-native .credential-value.masked {
+  letter-spacing: 2px !important;
+  color: var(--muted) !important;
+}
+
+html.u2u-native .copy-badge-btn {
+  background: var(--surface-3) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-pill) !important;
+  color: var(--text) !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+}
+
+html.u2u-native .copy-badge-btn.copied {
+  background: rgba(76, 195, 138, 0.15) !important;
+  border-color: rgba(76, 195, 138, 0.4) !important;
+  color: var(--green) !important;
+}
+
+/* Expiration Pill in Flows */
+html.u2u-native .expiration-pill {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-pill) !important;
+  color: var(--muted) !important;
+  padding: 8px 16px !important;
+  font-size: 13px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin: 14px auto 20px !important;
+  width: fit-content !important;
+}
+
+html.u2u-native .expiration-pill strong {
+  color: var(--text) !important;
+}
+
+/* Shared Buttons on Native */
+html.u2u-native .btn-primary {
+  background: var(--coral) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: var(--radius-pill) !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  box-shadow: 0 4px 16px rgba(224, 94, 70, 0.35) !important;
+  cursor: pointer !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+
+html.u2u-native .btn-primary:active {
+  transform: scale(0.97) !important;
+  background: var(--coral-deep) !important;
+}
+
+html.u2u-native .btn-secondary {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-pill) !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+
+html.u2u-native .btn-secondary:active {
+  transform: scale(0.97) !important;
+  background: var(--surface-3) !important;
+}
+
+html.u2u-native .btn-danger,
+html.u2u-native .btn-danger-outline {
+  background: rgba(168, 52, 32, 0.12) !important;
+  color: var(--coral-text) !important;
+  border: 1.5px solid var(--coral-deep) !important;
+  border-radius: var(--radius-pill) !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+
+html.u2u-native .btn-danger:active,
+html.u2u-native .btn-danger-outline:active {
+  transform: scale(0.97) !important;
+  background: rgba(168, 52, 32, 0.25) !important;
+}
+
+/* Form Inputs on Native */
+html.u2u-native input[type="text"],
+html.u2u-native input[type="password"],
+html.u2u-native .passcode-input,
+html.u2u-native .room-input,
+html.u2u-native .form-input {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  color: var(--text) !important;
+  min-height: 48px !important;
+  padding: 10px 16px !important;
+  font-size: 16px !important;
+  font-family: var(--font-sans) !important;
+  box-sizing: border-box !important;
+  outline: none !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+html.u2u-native input[type="text"]:focus,
+html.u2u-native input[type="password"]:focus,
+html.u2u-native .passcode-input:focus,
+html.u2u-native .room-input:focus,
+html.u2u-native .form-input:focus {
+  border-color: rgba(224, 94, 70, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(224, 94, 70, 0.18) !important;
+}
+
+/* Modals & Dialogs / Bottom Sheets on Native */
+html.u2u-native .modal-backdrop {
+  background: rgba(13, 13, 15, 0.82) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 16px)) !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  z-index: 1000 !important;
+}
+
+html.u2u-native .modal-container,
+html.u2u-native .modal-dialog {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6) !important;
+  max-height: calc(100dvh - 36px) !important;
+  width: 100% !important;
+  max-width: 480px !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding: 24px 20px !important;
+  box-sizing: border-box !important;
+  margin: auto 0 !important;
+}
+
+html.u2u-native .modal-header h3,
+html.u2u-native .modal-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  letter-spacing: -0.02em !important;
+}
+
+html.u2u-native .modal-description {
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+html.u2u-native .modal-close-btn {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--muted) !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Wizard Steps (CreateProfileModal / UnlockProfileModal) */
+html.u2u-native .wizard-step-indicator {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin: 16px 0 20px !important;
+}
+
+html.u2u-native .wizard-dot {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--muted) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+html.u2u-native .wizard-dot.active {
+  background: var(--coral) !important;
+  border-color: var(--coral) !important;
+  color: #ffffff !important;
+}
+
+html.u2u-native .wizard-line {
+  flex: 1 !important;
+  height: 2px !important;
+  background: var(--surface-3) !important;
+}
+
+/* Identity Selection Screen */
+html.u2u-native .identity-selection-wrapper {
+  background: var(--bg) !important;
+  padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 24px)) !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html.u2u-native .identity-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  padding: 28px 22px !important;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45) !important;
+}
+
+html.u2u-native .avatar-tile {
+  background: var(--surface-2) !important;
+  border: 2px solid transparent !important;
+  border-radius: 50% !important;
+  transition: transform 0.15s ease, border-color 0.15s ease !important;
+}
+
+html.u2u-native .avatar-tile.selected {
+  border-color: var(--coral) !important;
+  box-shadow: 0 0 14px rgba(224, 94, 70, 0.4) !important;
+  transform: scale(1.06) !important;
+}
+
+html.u2u-native .avatar-upload-tile {
+  background: var(--surface-2) !important;
+  border: 2px dashed var(--border) !important;
+  border-radius: 50% !important;
+}
+
+/* Maintenance View */
+html.u2u-native .maintenance-wrapper {
+  background: var(--bg) !important;
+  padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 24px)) !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+}
+
+html.u2u-native .maintenance-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-card) !important;
+  padding: 28px 22px !important;
+}
+
+/* Legal Pages (Terms & Privacy) */
+html.u2u-native .legal-page-container {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  padding: 20px 20px calc(28px + env(safe-area-inset-bottom, 24px)) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+html.u2u-native .legal-content {
+  color: var(--text) !important;
+}
+
+html.u2u-native .legal-section {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  padding: 20px !important;
+  margin-bottom: 16px !important;
+}
+
+html.u2u-native .legal-section h2 {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  margin-bottom: 8px !important;
+}
+
+html.u2u-native .legal-section p {
+  font-size: 14px !important;
+  color: var(--muted) !important;
+  line-height: 1.6 !important;
+}
+
 
