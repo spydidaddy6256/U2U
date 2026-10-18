@@ -1,7 +1,7 @@
 // U2U Privacy-First Minimal Service Worker
 // Satisfies PWA installation criteria without caching private conversations, encryption keys, or API requests.
 
-const CACHE_NAME = 'u2u-app-v1';
+const CACHE_NAME = 'u2u-app-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,8 @@ const STATIC_ASSETS = [
   '/favicon.ico',
   '/apple-touch-icon.png',
   '/icon-192x192.png',
-  '/icon-512x512.png'
+  '/icon-512x512.png',
+  '/fonts/plus-jakarta-sans-latin.woff2'
 ];
 
 self.addEventListener('install', (event) => {

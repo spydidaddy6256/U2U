@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye, Lock, Clock } from 'lucide-react';
 import { formatCountdownSec } from '../utils/time';
+import { isNativeAndroid } from '../utils/apiConfig';
 
 /**
  * PhotoBubble Component
@@ -73,9 +74,13 @@ export default function PhotoBubble({
           <div className="photo-spoiler-icon-wrapper">
             <Eye size={18} />
           </div>
-          <span className="photo-spoiler-label">Tap to view</span>
+          <span className="photo-spoiler-label">
+            {isNativeAndroid() ? 'Tap to reveal photo' : 'Tap to view'}
+          </span>
           <span className="photo-spoiler-sublabel">
-            {timer ? `Disappears in ${formatCountdownSec(timer.secondsLeft)}` : 'Disappears in 8s'}
+            {isNativeAndroid()
+              ? (timer ? `VIEW ONCE · ${formatCountdownSec(timer.secondsLeft)}` : 'VIEW ONCE · 8s')
+              : (timer ? `Disappears in ${formatCountdownSec(timer.secondsLeft)}` : 'Disappears in 8s')}
           </span>
         </div>
       </div>

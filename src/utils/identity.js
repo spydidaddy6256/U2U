@@ -66,3 +66,21 @@ export function validateDisplayName(name) {
   };
 }
 
+export const MAX_AVATAR_IMAGE_SIZE = 1024 * 1024; // 1 MB (1,048,576 bytes)
+export const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * Validates custom avatar file size and MIME type
+ */
+export function validateAvatarFile(file) {
+  if (!file) {
+    return { valid: false, error: 'No file selected' };
+  }
+  if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+    return { valid: false, error: 'Please select a valid image file (JPG, PNG, or WebP)' };
+  }
+  if (file.size > MAX_AVATAR_IMAGE_SIZE) {
+    return { valid: false, error: 'Photo size must be under 1 MB' };
+  }
+  return { valid: true, error: null };
+}

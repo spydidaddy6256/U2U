@@ -24,7 +24,7 @@ import {
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
 import { isAndroidPlatform } from '../utils/platform';
-import { getWsUrl } from '../utils/apiConfig';
+import { getWsUrl, isNativeAndroid } from '../utils/apiConfig';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
@@ -121,44 +121,13 @@ export default function ChatView({
     selfIdentityRef.current = selfIdentity;
   }, [selfIdentity]);
 
-  // Pull-down reveal gesture for Android chat header
-  const pullTouchStartYRef = useRef(null);
-  const pullTouchStartXRef = useRef(null);
-  const canPullHeaderRef = useRef(false);
-
-  // Start Android chat header auto-hide behavior when active chat screen mounts
+  // Notify header reveal on chat mount for mobile compatibility
   useEffect(() => {
     if (isAndroidPlatform()) {
       onRevealHeader?.();
     }
   }, [onRevealHeader]);
 
-  const handlePullStart = (clientY, clientX) => {
-    if (!isAndroidPlatform() || !onRevealHeader) return;
-    pullTouchStartYRef.current = clientY;
-    pullTouchStartXRef.current = clientX;
-    const vp = viewportRef.current;
-    const isAtTop = !vp || vp.scrollTop <= 20;
-    const isNearTop = clientY <= 220;
-    canPullHeaderRef.current = isAtTop || isNearTop;
-  };
-
-  const handlePullMove = (clientY, clientX) => {
-    if (!canPullHeaderRef.current || pullTouchStartYRef.current === null || !onRevealHeader) return;
-    const deltaY = clientY - pullTouchStartYRef.current;
-    const deltaX = clientX - (pullTouchStartXRef.current || clientX);
-    if (deltaY > 25 && deltaY > Math.abs(deltaX) * 1.2) {
-      onRevealHeader();
-      canPullHeaderRef.current = false;
-      pullTouchStartYRef.current = null;
-    }
-  };
-
-  const handlePullEnd = () => {
-    pullTouchStartYRef.current = null;
-    pullTouchStartXRef.current = null;
-    canPullHeaderRef.current = false;
-  };
   // Track message IDs we've already sent a 'seen' ack for (idempotency)
   const seenMessageIdsRef = useRef(new Set());
   // Ref to always have the latest socket without recreating the observer
@@ -869,15 +838,13 @@ export default function ChatView({
     }
   }, [selfIdentity, sessionId, clientId]);
 
-  // On initial chat entry or session re-entry, show the beginning/top of the conversation
+  // On initial chat entry with messages, scroll to the bottom so the latest messages are immediately visible
   const initialScrollDoneRef = useRef(false);
   useEffect(() => {
-    if (!initialScrollDoneRef.current && viewportRef.current) {
+    if (!initialScrollDoneRef.current && viewportRef.current && messages.length > 0) {
       initialScrollDoneRef.current = true;
-      viewportRef.current.scrollTop = 0;
-      const vp = viewportRef.current;
-      const dist = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
-      setIsAtBottom(dist < 80);
+      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+      setIsAtBottom(true);
     }
   }, [messages.length]);
 
@@ -1378,32 +1345,10 @@ export default function ChatView({
   });
 
   const isAndroidChat = isAndroidPlatform();
+  const isNative = isNativeAndroid();
 
   return (
     <div className={`chat-container ${isAndroidChat ? 'chat-android-header-active' : ''}`}>
-      {/* Invisible top touch target to trigger header reveal when pulled/tapped near top */}
-      {isAndroidChat && (
-        <div
-          className="chat-header-pull-trigger"
-          onTouchStart={(e) => {
-            const t = e.touches?.[0];
-            if (t) handlePullStart(t.clientY, t.clientX);
-          }}
-          onTouchMove={(e) => {
-            const t = e.touches?.[0];
-            if (t) handlePullMove(t.clientY, t.clientX);
-          }}
-          onTouchEnd={handlePullEnd}
-          onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
-          onPointerMove={(e) => {
-            if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
-          }}
-          onPointerUp={handlePullEnd}
-          onClick={onRevealHeader}
-          aria-hidden="true"
-        />
-      )}
-
       {connectionStatus === 'reconnecting' && (
         <div className="connection-banner">
           <WifiOff size={14} style={{ color: 'var(--status-warning)' }} />
@@ -1411,26 +1356,20 @@ export default function ChatView({
         </div>
       )}
 
-      {/* Messages area */}
+      {/* Messages area — Native Touch Scrolling */}
       <div
         className="messages-viewport"
         ref={viewportRef}
         onScroll={handleScroll}
-        onTouchStart={(e) => {
-          const t = e.touches?.[0];
-          if (t) handlePullStart(t.clientY, t.clientX);
-        }}
-        onTouchMove={(e) => {
-          const t = e.touches?.[0];
-          if (t) handlePullMove(t.clientY, t.clientX);
-        }}
-        onTouchEnd={handlePullEnd}
-        onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
-        onPointerMove={(e) => {
-          if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
-        }}
-        onPointerUp={handlePullEnd}
       >
+        {/* Stationary Native Android Encryption Pill */}
+        {isNative && (
+          <div className="native-chat-encryption-row">
+            <div className="native-chat-encryption-pill">
+              Encrypted on your device · Today
+            </div>
+          </div>
+        )}
         {allItems.length === 0 ? (
           <div className="chat-empty-state">
             <div className="empty-state-icon">
@@ -1532,6 +1471,14 @@ export default function ChatView({
                         onPlaybackEnded={handleVoicePlaybackEnded}
                       />
                     )}
+
+                    {/* Native inline timestamp & receipt inside bubble */}
+                    <div className="native-bubble-meta" aria-hidden="true">
+                      <span className="native-bubble-time">{formatContextualTime(msg.timestamp)}</span>
+                      {isSelf && (
+                        <MessageStatus status={msg.status} seenAt={msg.seenAt} />
+                      )}
+                    </div>
                   </div>
 
                   {/* Three-dot button for peer message (right of bubble) */}
@@ -1695,7 +1642,7 @@ export default function ChatView({
             <textarea
               ref={textareaRef}
               className="composer-input"
-              placeholder="Write a message…"
+              placeholder={isNative ? "Message" : "Write a message…"}
               rows={1}
               value={inputText}
               onChange={handleInputChange}
@@ -1718,28 +1665,55 @@ export default function ChatView({
               <Smile size={18} />
             </button>
 
-            {/* Mic button — shown when input is empty */}
-            {!inputText.trim() && (
-              <button
-                className="composer-mic-btn"
-                onClick={() => setIsRecording(true)}
-                title="Send a voice note"
-                aria-label="Record voice note"
-              >
-                <Mic size={18} />
-              </button>
-            )}
+            {/* Controls: Native renders both Mic & round Send arrow; Web preserves original toggling */}
+            {isNative ? (
+              <>
+                <button
+                  type="button"
+                  className="composer-mic-btn native-mic-btn"
+                  onClick={() => setIsRecording(true)}
+                  title="Send a voice note"
+                  aria-label="Record voice note"
+                >
+                  <Mic size={19} />
+                </button>
+                <button
+                  type="button"
+                  className="composer-send-btn native-send-btn"
+                  onClick={handleSendMessage}
+                  disabled={!inputText.trim()}
+                  title="Send message"
+                  aria-label="Send"
+                >
+                  <ArrowUp size={18} />
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Mic button — shown when input is empty */}
+                {!inputText.trim() && (
+                  <button
+                    className="composer-mic-btn"
+                    onClick={() => setIsRecording(true)}
+                    title="Send a voice note"
+                    aria-label="Record voice note"
+                  >
+                    <Mic size={18} />
+                  </button>
+                )}
 
-            {/* Send button — shown when there is text */}
-            {inputText.trim() && (
-              <button
-                className="composer-send-btn"
-                onClick={handleSendMessage}
-                title="Send message"
-                aria-label="Send"
-              >
-                <ArrowUp size={18} />
-              </button>
+                {/* Send button — shown when there is text */}
+                {inputText.trim() && (
+                  <button
+                    className="composer-send-btn"
+                    onClick={handleSendMessage}
+                    title="Send message"
+                    aria-label="Send"
+                  >
+                    <ArrowUp size={18} />
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

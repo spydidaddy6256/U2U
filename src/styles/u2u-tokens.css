@@ -1,0 +1,808 @@
+/* ═══════════════════════════════════════════════════════════
+   U2U NATIVE DESIGN TOKENS (Phase 1)
+   Scoped to html.u2u-native only.
+   Web and desktop styles remain 100% untouched.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Bundled Local Font — Offline Ready */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ── Native Color Palette & Tokens ── */
+html.u2u-native {
+  --bg: #0D0D0F;
+  --surface: #17171A;
+  --surface-2: #1A1A1E;
+  --surface-3: #26262B;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.12);
+  --text: #F4F2EF;
+  --muted: #9A9AA2;
+  --coral: #E05E46;
+  --coral-text: #E8664C;
+  --coral-deep: #A83420;
+  --on-coral: #1A0C08;
+  --cream: #F1EEE9;
+  --green: #4CC38A;
+
+  /* Typography */
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-base: var(--font-sans);
+
+  /* Component Radii */
+  --radius-card: 28px;
+  --radius-bubble: 22px;
+  --radius-tail: 6px;
+  --radius-pill: 999px;
+
+  /* Touch Targets */
+  --min-touch-target: 44px;
+
+  /* Transitions */
+  --ease-native: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-native: 220ms;
+}
+
+/* ── Native App Body & Viewport ── */
+html.u2u-native,
+html.u2u-native body {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle single coral radial glow in top corner (18% opacity, no other glows) */
+html.u2u-native body {
+  background-image: radial-gradient(circle 380px at 100% 0%, rgba(224, 94, 70, 0.18), transparent 72%) !important;
+  background-attachment: fixed !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Hide multi-orb web ambient glows in native app */
+html.u2u-native .ambient-background {
+  display: none !important;
+}
+
+/* Motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  html.u2u-native * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Shared Component Styles (Native Scope) ── */
+
+/* 1. Native Header */
+html.u2u-native .u2u-header {
+  background: rgba(13, 13, 15, 0.88) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid var(--border) !important;
+  height: calc(58px + env(safe-area-inset-top, 0px)) !important;
+}
+
+html.u2u-native .native-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 58px;
+  padding: 0 16px;
+}
+
+/* Round 44px icon buttons */
+html.u2u-native .native-icon-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease-out, background 0.15s ease-out;
+}
+
+html.u2u-native .native-icon-btn:active {
+  transform: scale(0.96);
+  background: var(--surface-2);
+}
+
+/* Brand Wordmark (••• U2U) */
+html.u2u-native .native-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+html.u2u-native .native-brand-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+html.u2u-native .native-brand-dots .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--coral);
+}
+
+html.u2u-native .native-brand-dots .dot:nth-child(2) {
+  opacity: 0.9;
+}
+
+html.u2u-native .native-brand-dots .dot:nth-child(3) {
+  opacity: 0.75;
+}
+
+html.u2u-native .native-brand-text {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--text);
+}
+
+/* Native Chat Header Specifics */
+html.u2u-native .native-chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+html.u2u-native .native-peer-avatar-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--coral), var(--coral-deep));
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  overflow: hidden;
+}
+
+html.u2u-native .native-peer-avatar-circle img,
+html.u2u-native .native-peer-avatar-circle svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+html.u2u-native .native-peer-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+html.u2u-native .native-peer-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.u2u-native .native-peer-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+html.u2u-native .native-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+html.u2u-native .native-status-dot.waiting {
+  background: var(--muted);
+}
+
+/* Native Chat Header Burn Button */
+html.u2u-native .native-header-burn-btn {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: rgba(224, 94, 70, 0.1);
+  border: 1px solid rgba(224, 94, 70, 0.35);
+  color: var(--coral-text);
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease-out, background 0.15s ease-out;
+}
+
+html.u2u-native .native-header-burn-btn:active {
+  transform: scale(0.96);
+  background: rgba(224, 94, 70, 0.22);
+}
+
+/* 2. Shared Native Cards */
+html.u2u-native .u2u-card-native {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 3. Shared Native Pill Buttons */
+html.u2u-native .u2u-pill-btn {
+  min-height: var(--min-touch-target);
+  height: var(--min-touch-target);
+  padding: 0 22px;
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s var(--ease-native), background 0.15s var(--ease-native);
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+html.u2u-native .u2u-pill-btn:active {
+  transform: scale(0.97);
+}
+
+html.u2u-native .u2u-pill-btn-coral {
+  background: var(--coral);
+  color: #ffffff;
+}
+
+html.u2u-native .u2u-pill-btn-coral:active {
+  background: var(--coral-deep);
+}
+
+html.u2u-native .u2u-pill-btn-dark {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+html.u2u-native .u2u-pill-btn-dark:active {
+  background: var(--surface-3);
+}
+
+html.u2u-native .u2u-pill-btn-outline-burn {
+  background: transparent;
+  border: 1px solid rgba(168, 52, 32, 0.5);
+  color: var(--coral-deep);
+  font-weight: 700;
+}
+
+html.u2u-native .u2u-pill-btn-outline-burn:active {
+  background: rgba(168, 52, 32, 0.1);
+}
+
+/* 4. Shared Native Pill Inputs */
+html.u2u-native .u2u-pill-input-wrap {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  min-height: var(--min-touch-target);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0 6px 0 16px;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+html.u2u-native .u2u-pill-input-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+html.u2u-native .u2u-pill-input-field::placeholder {
+  color: var(--muted);
+}
+
+/* 5. Shared Message Bubble Tokens */
+html.u2u-native .u2u-bubble-incoming {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-tail);
+  color: var(--text);
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+html.u2u-native .u2u-bubble-outgoing {
+  background: linear-gradient(135deg, var(--coral) 0%, var(--coral-deep) 100%);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-tail) var(--radius-bubble);
+  color: #ffffff;
+  padding: 14px 18px;
+  font-size: 15px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+/* 6. Status Pill (e.g. End-to-end encrypted · 24h) */
+html.u2u-native .native-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   7. Native Chat Screen Styles (Phase 3)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Chat Container & Viewport */
+html.u2u-native .chat-container {
+  background: var(--bg) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  position: relative !important;
+}
+
+html.u2u-native .messages-viewport {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 12px 16px 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  scroll-behavior: smooth !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  background: transparent !important;
+}
+
+/* Center Stationary Encryption Row & Pill */
+.native-chat-encryption-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 6px 0 16px 0;
+  width: 100%;
+}
+
+.native-chat-encryption-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  letter-spacing: -0.01em;
+}
+
+/* Message Wrappers & Bubble Layout */
+html.u2u-native .message-wrapper {
+  margin-bottom: 8px !important;
+}
+
+html.u2u-native .message-wrapper.self {
+  align-items: flex-end !important;
+}
+
+html.u2u-native .message-wrapper.peer {
+  align-items: flex-start !important;
+}
+
+html.u2u-native .message-bubble-line {
+  display: flex !important;
+  align-items: flex-end !important;
+  gap: 6px !important;
+  max-width: 100% !important;
+}
+
+/* Outgoing Bubble (Coral Gradient with 22px / 6px tail) */
+html.u2u-native .message-wrapper.self .message-bubble {
+  background: linear-gradient(135deg, var(--coral) 0%, var(--coral-deep) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 22px 22px 6px 22px !important;
+  padding: 12px 16px 10px 16px !important;
+  box-shadow: 0 2px 10px rgba(224, 94, 70, 0.22) !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+  max-width: 82% !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Incoming Bubble (Dark Surface-3 with 22px / 6px tail) */
+html.u2u-native .message-wrapper.peer .message-bubble {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 22px 22px 22px 6px !important;
+  padding: 12px 16px 10px 16px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+  max-width: 82% !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Three-dot message options button on native */
+html.u2u-native .message-more-btn {
+  color: var(--muted) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 6px !important;
+}
+
+html.u2u-native .message-more-btn:active {
+  color: var(--text) !important;
+}
+
+/* Inline metadata inside bubble */
+.native-bubble-meta {
+  display: none;
+}
+
+html.u2u-native .native-bubble-meta {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 4px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  margin-top: 4px !important;
+  margin-bottom: -1px !important;
+  user-select: none !important;
+}
+
+html.u2u-native .native-bubble-time {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+html.u2u-native .message-wrapper.self .native-bubble-time {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+html.u2u-native .message-wrapper.peer .native-bubble-time {
+  color: var(--muted) !important;
+}
+
+html.u2u-native .message-wrapper.self .tick-icon {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+html.u2u-native .message-wrapper.self .tick-icon.seen {
+  color: #ffffff !important;
+}
+
+/* Hide outer metadata on native */
+html.u2u-native .message-meta {
+  display: none !important;
+}
+
+/* Reply quote banner in bubble */
+html.u2u-native .reply-quote-preview {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-left: 3px solid var(--coral) !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  margin-bottom: 8px !important;
+}
+
+/* View-Once Photo Card on Native */
+html.u2u-native .message-bubble.photo-bubble-wrapper {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html.u2u-native .photo-bubble-container {
+  border-radius: 20px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface-2) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+  overflow: hidden !important;
+  min-width: 230px !important;
+  max-width: 290px !important;
+}
+
+html.u2u-native .photo-spoiler-overlay {
+  background: rgba(13, 13, 15, 0.76) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+html.u2u-native .photo-spoiler-badge {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  padding: 14px 20px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+html.u2u-native .photo-spoiler-icon-wrapper {
+  background: rgba(224, 94, 70, 0.15) !important;
+  color: var(--coral) !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+}
+
+html.u2u-native .photo-spoiler-label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+}
+
+html.u2u-native .photo-spoiler-sublabel {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--muted) !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+html.u2u-native .photo-expired-card {
+  background: var(--surface-2) !important;
+  border: 1px dashed var(--border) !important;
+  border-radius: 16px !important;
+  color: var(--muted) !important;
+  padding: 12px 18px !important;
+}
+
+/* Voice Note Bubble on Native */
+html.u2u-native .message-bubble.voice-bubble-wrapper {
+  padding: 10px 14px !important;
+}
+
+html.u2u-native .voice-note-bubble {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  background: transparent !important;
+  min-width: 220px !important;
+}
+
+html.u2u-native .vn-play-btn {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  border-radius: 50% !important;
+  background: var(--coral) !important;
+  color: #ffffff !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(224, 94, 70, 0.35) !important;
+  transition: transform 0.15s ease !important;
+}
+
+html.u2u-native .message-wrapper.self .vn-play-btn {
+  background: #ffffff !important;
+  color: var(--coral) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+html.u2u-native .vn-play-btn:active {
+  transform: scale(0.94) !important;
+}
+
+html.u2u-native .vn-waveform {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  height: 24px !important;
+}
+
+html.u2u-native .vn-bar {
+  width: 3px !important;
+  border-radius: 2px !important;
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+html.u2u-native .vn-bar.filled {
+  background: var(--coral) !important;
+}
+
+html.u2u-native .message-wrapper.self .vn-bar.filled {
+  background: #ffffff !important;
+}
+
+html.u2u-native .vn-time {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+  font-weight: 500 !important;
+}
+
+html.u2u-native .message-wrapper.self .vn-time {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+html.u2u-native .vn-mic-icon {
+  color: var(--muted) !important;
+  opacity: 0.7 !important;
+}
+
+/* Floating Pill Composer on Native */
+html.u2u-native .composer-wrapper {
+  padding: 8px 16px max(14px, env(safe-area-inset-bottom, 14px)) !important;
+  background: transparent !important;
+  position: relative !important;
+  flex-shrink: 0 !important;
+  margin-top: auto !important;
+}
+
+html.u2u-native .composer-bar {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-pill) !important;
+  padding: 6px 8px 6px 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 52px !important;
+}
+
+html.u2u-native .composer-bar:focus-within {
+  border-color: rgba(224, 94, 70, 0.5) !important;
+  box-shadow: 0 4px 24px rgba(224, 94, 70, 0.18), 0 0 0 1px rgba(224, 94, 70, 0.4) !important;
+}
+
+html.u2u-native .composer-add-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+html.u2u-native .composer-add-btn:active {
+  color: var(--text) !important;
+  transform: scale(0.95) !important;
+}
+
+html.u2u-native .composer-input {
+  color: var(--text) !important;
+  font-size: 15px !important;
+  font-family: var(--font-sans) !important;
+  padding: 8px 0 !important;
+  line-height: 1.4 !important;
+}
+
+html.u2u-native .composer-input::placeholder {
+  color: var(--muted) !important;
+}
+
+html.u2u-native .composer-mic-btn {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  color: var(--muted) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+html.u2u-native .composer-mic-btn:active {
+  color: var(--coral) !important;
+  transform: scale(0.95) !important;
+}
+
+html.u2u-native .composer-send-btn {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  border-radius: 50% !important;
+  background: var(--coral) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 2px 10px rgba(224, 94, 70, 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
+}
+
+html.u2u-native .composer-send-btn:disabled {
+  opacity: 0.35 !important;
+  background: var(--surface-3) !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+}
+
+html.u2u-native .composer-send-btn:not(:disabled):active {
+  transform: scale(0.94) !important;
+  background: var(--coral-deep) !important;
+}
+
+html.u2u-native .composer-emoji-btn {
+  display: none !important;
+}
+
+/* Typing & New Messages indicator */
+html.u2u-native .typing-bar {
+  color: var(--muted) !important;
+}
+
+html.u2u-native .typing-dot {
+  background: var(--muted) !important;
+}
+
+html.u2u-native .new-messages-pill {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius-pill) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+

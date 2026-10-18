@@ -1,5 +1,5 @@
 /* U2U — Design System Tokens & Global Glassmorphism Styles */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import './styles/u2u-tokens.css';
 
 :root {
   /* ── Dark Theme (Default) ── */
@@ -320,76 +320,59 @@ button:active {
 
 /* ── Chat Header — Floating Glass Surface ── */
 .u2u-header {
-  height: 60px;
-  min-height: 60px;
+  height: 58px;
+  min-height: 58px;
   border-bottom: 1px solid var(--glass-border);
   background: var(--glass-panel);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4), var(--glass-highlight);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.45), var(--glass-highlight);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 22px;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top, 0px);
   z-index: 50;
   position: relative;
+  flex-shrink: 0;
   transition: border-color var(--duration-normal) var(--ease-natural),
               background var(--duration-normal) var(--ease-natural);
 }
 
-/* ── Android Chat-Only Floating Header & Auto-Hide Behavior ── */
+/* ── Android Chat Header — Stable & Native Docked ── */
 .u2u-header.u2u-header-chat-android {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  border-bottom-left-radius: 22px;
-  border-bottom-right-radius: 22px;
+  position: relative;
   border-bottom: 1px solid var(--glass-border-light);
-  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.55), var(--glass-highlight);
-  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.38s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 60;
-  will-change: transform, opacity;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.45), var(--glass-highlight);
+  z-index: 50;
+  flex-shrink: 0;
 }
 
 .u2u-header.u2u-header-chat-android.u2u-header-chat-hidden {
-  transform: translateY(-105%);
-  opacity: 0;
-  pointer-events: none;
-  box-shadow: none;
+  /* Retain class definition for safety, but keep visible on native Android */
+  opacity: 1;
+  pointer-events: auto;
 }
 
-/* Chat container & viewport padding adjustments when Android floating header is active */
+/* Chat container & viewport styling */
 .chat-container.chat-android-header-active {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .chat-container.chat-android-header-active .messages-viewport {
-  padding-top: 68px !important;
+  padding-top: 14px;
 }
 
-/* Invisible top pull-trigger zone (allows pulling down or tapping near top to reveal header) */
+/* Deactivated pull-trigger zone (stationary header eliminates need for touch overlay) */
 .chat-header-pull-trigger {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 56px;
-  z-index: 55;
-  background: transparent;
-  cursor: pointer;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .u2u-header.u2u-header-chat-android {
-    transition: opacity 0.2s ease !important;
-  }
-  .u2u-header.u2u-header-chat-android.u2u-header-chat-hidden {
-    transform: none !important;
-    opacity: 0 !important;
-  }
+  display: none;
+  pointer-events: none;
 }
 
 .u2u-brand {

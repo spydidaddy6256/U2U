@@ -2,7 +2,7 @@ import React from 'react';
 import { Clock, Plus } from 'lucide-react';
 import { playTickSound } from '../utils/audio';
 
-export default function ExpiredView({ onCreateNew }) {
+export default function ExpiredView({ onCreateNew, onGoHome }) {
   return (
     <div className="flow-wrapper">
       <div className="flow-card flow-card-compact" style={{ textAlign: 'center' }}>
@@ -38,6 +38,17 @@ export default function ExpiredView({ onCreateNew }) {
           <Plus size={18} />
           <span>Create New Session</span>
         </button>
+
+        {onGoHome && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => { playTickSound(); onGoHome(); }}
+            style={{ width: '100%', height: '42px', marginTop: '10px' }}
+          >
+            <span>Return to Home</span>
+          </button>
+        )}
       </div>
     </div>
   );

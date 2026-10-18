@@ -130,3 +130,5 @@ export function isAndroidPlatform() {
   return false;
 }
 
+export { isNativeAndroid } from './apiConfig.js';
+export { isNativeAndroid as isNativeApp } from './apiConfig.js';

@@ -1,11 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { RefreshCw, Upload, X, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AVATAR_PRESETS, getAvatarSvg } from '../data/avatars';
-import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName } from '../utils/identity';
+import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName, validateAvatarFile } from '../utils/identity';
 import { playTickSound, playErrorSound } from '../utils/audio';
-
-const MAX_CUSTOM_IMAGE_SIZE = 1024 * 1024; // 1MB safe limit
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function IdentitySelectionView({
   onConfirmIdentity,
@@ -15,9 +12,18 @@ export default function IdentitySelectionView({
   subtitle = 'Pick a temporary anonymous name and avatar. No real personal information required.'
 }) {
   const [displayName, setDisplayName] = useState(() => initialName || generateRandomDisplayName());
-  const [selectedAvatarId, setSelectedAvatarId] = useState(() => initialAvatar || AVATAR_PRESETS[0].id);
-  const [customAvatarData, setCustomAvatarData] = useState(null);
-  const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'custom'
+  const [selectedAvatarId, setSelectedAvatarId] = useState(() => {
+    if (initialAvatar && initialAvatar.startsWith('data:')) return 'custom';
+    return initialAvatar || AVATAR_PRESETS[0].id;
+  });
+  const [customAvatarData, setCustomAvatarData] = useState(() => {
+    if (initialAvatar && initialAvatar.startsWith('data:')) return initialAvatar;
+    return null;
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    if (initialAvatar && initialAvatar.startsWith('data:')) return 'custom';
+    return 'presets';
+  });
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef(null);
 
@@ -30,22 +36,17 @@ export default function IdentitySelectionView({
   const handleSelectPreset = (id) => {
     playTickSound();
     setSelectedAvatarId(id);
-    setCustomAvatarData(null);
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    const validation = validateAvatarFile(file);
+    if (!validation.valid) {
       playErrorSound();
-      setErrorMsg('Please select a JPG, PNG, or WebP image');
-      return;
-    }
-
-    if (file.size > MAX_CUSTOM_IMAGE_SIZE) {
-      playErrorSound();
-      setErrorMsg('Image size must be under 1MB');
+      setErrorMsg(validation.error);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -55,6 +56,10 @@ export default function IdentitySelectionView({
       setCustomAvatarData(reader.result);
       setSelectedAvatarId('custom');
       playTickSound();
+    };
+    reader.onerror = () => {
+      playErrorSound();
+      setErrorMsg('Failed to read image file');
     };
     reader.readAsDataURL(file);
   };
@@ -150,6 +155,17 @@ export default function IdentitySelectionView({
             </div>
           </div>
 
+          {/* Hidden File Input for Custom Upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+            data-testid="identity-file-input"
+            aria-label="Upload custom picture"
+          />
+
           {/* Avatar Source Tabs */}
           <div className="avatar-tabs-row" role="tablist">
             <button
@@ -174,40 +190,108 @@ export default function IdentitySelectionView({
 
           {/* Presets Grid */}
           {activeTab === 'presets' && (
-            <div className="avatar-grid" role="radiogroup" aria-label="Avatar options">
-              {AVATAR_PRESETS.map((preset) => {
-                const isSelected = selectedAvatarId === preset.id && !customAvatarData;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={isSelected}
-                    className={`avatar-grid-item ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleSelectPreset(preset.id)}
-                    title={preset.name}
-                  >
-                    <div
-                      className="avatar-thumb"
-                      dangerouslySetInnerHTML={{ __html: preset.svg }}
-                    />
-                    <span className="avatar-thumb-name">{preset.name}</span>
-                  </button>
-                );
-              })}
+            <div className="field-group">
+              <div className="avatar-grid" role="radiogroup" aria-label="Avatar options">
+                {AVATAR_PRESETS.map((preset) => {
+                  const isSelected = selectedAvatarId === preset.id && !customAvatarData;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      className={`avatar-grid-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleSelectPreset(preset.id)}
+                      title={preset.name}
+                    >
+                      <div
+                        className="avatar-thumb"
+                        dangerouslySetInnerHTML={{ __html: preset.svg }}
+                      />
+                      <span className="avatar-thumb-name">{preset.name}</span>
+                    </button>
+                  );
+                })}
+
+                {/* Upload Photo Tile alongside built-in presets */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAvatarId === 'custom' && Boolean(customAvatarData)}
+                  className={`avatar-grid-item avatar-upload-tile ${selectedAvatarId === 'custom' && customAvatarData ? 'selected' : ''}`}
+                  onClick={() => {
+                    if (!customAvatarData) {
+                      fileInputRef.current?.click();
+                    } else {
+                      if (selectedAvatarId !== 'custom') {
+                        setSelectedAvatarId('custom');
+                        playTickSound();
+                      } else {
+                        fileInputRef.current?.click();
+                      }
+                    }
+                  }}
+                  title={customAvatarData ? "Custom photo selected (Click to change)" : "Upload photo (Max 1 MB · JPG, PNG, WebP)"}
+                  aria-label="Upload photo"
+                  data-testid="identity-upload-tile"
+                >
+                  <div className="avatar-thumb avatar-upload-thumb">
+                    {customAvatarData ? (
+                      <img src={customAvatarData} alt="Custom" className="avatar-custom-thumb-img" />
+                    ) : (
+                      <Upload size={20} className="avatar-upload-icon" />
+                    )}
+                  </div>
+                  <span className="avatar-thumb-name">{customAvatarData ? 'Custom' : 'Upload'}</span>
+                </button>
+              </div>
+
+              {/* Custom photo management preview card */}
+              {customAvatarData && (
+                <div className="custom-photo-preview-card" data-testid="identity-custom-card">
+                  <div className="custom-photo-info">
+                    <img src={customAvatarData} alt="Uploaded" className="custom-photo-thumb" />
+                    <div className="custom-photo-meta">
+                      <span className="custom-photo-title">
+                        {selectedAvatarId === 'custom' ? 'Custom photo active' : 'Custom photo available'}
+                      </span>
+                      <span className="custom-photo-specs">JPG, PNG, WebP · Under 1 MB</span>
+                    </div>
+                  </div>
+                  <div className="custom-photo-actions">
+                    {selectedAvatarId !== 'custom' && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => { setSelectedAvatarId('custom'); playTickSound(); }}
+                      >
+                        Use Photo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-danger-subtle"
+                      onClick={handleRemoveCustom}
+                    >
+                      <X size={14} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Custom Picture Upload */}
           {activeTab === 'custom' && (
             <div className="custom-upload-section">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                style={{ display: 'none' }}
-                onChange={handleFileChange}
-              />
               {customAvatarData ? (
                 <div className="custom-uploaded-card">
                   <img src={customAvatarData} alt="Uploaded" className="custom-uploaded-thumb" />
@@ -218,6 +302,14 @@ export default function IdentitySelectionView({
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Change picture"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm btn-danger-subtle"
                     onClick={handleRemoveCustom}
                     title="Remove custom picture"
                   >

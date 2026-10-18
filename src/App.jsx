@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import LandingView from './components/LandingView';
 import CreateSessionView from './components/CreateSessionView';
@@ -17,11 +18,12 @@ import UnlockProfileModal from './components/modals/UnlockProfileModal';
 import DeleteProfileModal from './components/modals/DeleteProfileModal';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import CinematicLaunch from './components/CinematicLaunch';
-import { isAndroidPlatform } from './utils/platform';
-import { getApiUrl } from './utils/apiConfig';
+import NativeAppLauncher from './components/NativeAppLauncher';
+import { getApiUrl, isNativeAndroid } from './utils/apiConfig';
 import { canAccessWebChat, setDesktopOverride } from './utils/platformRouting';
 import { getActiveProfile, obliterateLocalProfile } from './utils/profileCrypto';
 import { generateAnonymousName } from './utils/identity';
+import { getStoredActiveSession, saveActiveSession, clearActiveSession } from './utils/sessionStore';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -35,6 +37,9 @@ import {
 import './App.css';
 
 export default function App() {
+  const isNative = isNativeAndroid();
+  const initialSession = getStoredActiveSession();
+
   const [showLaunchReveal, setShowLaunchReveal] = useState(() => {
     try {
       if (sessionStorage.getItem('u2u-launch-seen')) return false;
@@ -44,9 +49,31 @@ export default function App() {
       return true;
     }
   });
-  const [view, setView] = useState('landing'); // landing|create|join|join-link|identity-select|chat|expired|terms|privacy|mobile-handoff
-  const [sessionId, setSessionId] = useState('');
-  const [passcode, setPasscode] = useState('');
+
+  // Distinct top-level entry experiences:
+  // - Native Android APK: opens directly into the dedicated native messaging app launcher
+  // - Web (desktop/mobile browser): opens into the marketing website landing page
+  // - Deep links (/join/:token) and active unexpired sessions take precedence
+  const [view, setView] = useState(() => {
+    if (typeof window !== 'undefined' && window.location) {
+      const match = window.location.pathname.match(/^\/join\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        if (!isNative && !canAccessWebChat()) {
+          return 'mobile-handoff';
+        }
+        return 'join-link';
+      }
+    }
+
+    if (initialSession && initialSession.sessionId && initialSession.expiresAt > Date.now()) {
+      return initialSession.view || 'chat';
+    }
+
+    return isNative ? 'app-launcher' : 'landing';
+  });
+
+  const [sessionId, setSessionId] = useState(() => initialSession?.sessionId || '');
+  const [passcode, setPasscode] = useState(() => initialSession?.passcode || '');
   const [cryptoKey, setCryptoKey] = useState(null);
   const [clientId] = useState(() => {
     try {
@@ -60,8 +87,11 @@ export default function App() {
       return 'c-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
     }
   });
-  const [expiresAt, setExpiresAt] = useState(null);
-  const [authTicket, setAuthTicket] = useState('');
+  const [expiresAt, setExpiresAt] = useState(() => initialSession?.expiresAt || null);
+  const [authTicket, setAuthTicket] = useState(() => initialSession?.authTicket || '');
+  const [joinToken, setJoinToken] = useState(() => initialSession?.joinToken || '');
+
+  const homeView = isNative ? 'app-launcher' : 'landing';
 
   // Permanent Profile & Identity State
   const [activeProfile, setActiveProfile] = useState(() => getActiveProfile());
@@ -93,8 +123,46 @@ export default function App() {
   const [clearChatModalOpen, setClearChatModalOpen] = useState(false);
   const [burnSessionModalOpen, setBurnSessionModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  const [joinToken, setJoinToken] = useState('');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  // Derive cryptographic key upon active session restoration if not yet cached in state
+  useEffect(() => {
+    if (sessionId && passcode && !cryptoKey) {
+      let isCancelled = false;
+      deriveKey(passcode, sessionId).then(key => {
+        if (!isCancelled && key) {
+          setCryptoKey(key);
+        }
+      }).catch(err => {
+        console.warn('[U2U] Key derivation on session restoration failed:', err);
+      });
+      return () => { isCancelled = true; };
+    }
+  }, [sessionId, passcode, cryptoKey]);
+
+  // Synchronize u2u-native class on html element strictly for native Android
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isNative) {
+      document.documentElement.classList.add('u2u-native');
+    } else {
+      document.documentElement.classList.remove('u2u-native');
+    }
+  }, [isNative]);
+
+  // Synchronize active chat session state to session store for resilient app resume
+  useEffect(() => {
+    if (view === 'chat' && sessionId && passcode && expiresAt) {
+      saveActiveSession({
+        sessionId,
+        passcode,
+        expiresAt,
+        authTicket,
+        joinToken,
+        view: 'chat'
+      });
+    }
+  }, [view, sessionId, passcode, expiresAt, authTicket, joinToken]);
 
   // Connection & peer presence state for header synchronization
   const [connectionStatus, setConnectionStatus] = useState('offline');
@@ -105,65 +173,20 @@ export default function App() {
     try { return localStorage.getItem('u2u-theme') || 'dark'; } catch { return 'dark'; }
   });
 
-  // Android chat-only header auto-hide state & timer
+  // Android chat header state (permanently visible for native mobile reliability)
   const [chatHeaderVisible, setChatHeaderVisible] = useState(true);
   const [_isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const isHeaderMenuOpenRef = useRef(false);
-  const headerHideTimerRef = useRef(null);
 
   const resetHeaderHideTimer = useCallback(() => {
-    if (headerHideTimerRef.current) {
-      clearTimeout(headerHideTimerRef.current);
-      headerHideTimerRef.current = null;
-    }
     setChatHeaderVisible(true);
-    // Never auto-hide while the header dropdown menu is open
-    if (isHeaderMenuOpenRef.current) {
-      return;
-    }
-    // Auto-hide after approximately 3 seconds of inactivity
-    headerHideTimerRef.current = setTimeout(() => {
-      if (!isHeaderMenuOpenRef.current) {
-        setChatHeaderVisible(false);
-      }
-    }, 3000);
   }, []);
 
   const handleHeaderMenuChange = useCallback((isOpen) => {
     isHeaderMenuOpenRef.current = isOpen;
     setIsHeaderMenuOpen(isOpen);
-    if (isOpen) {
-      if (headerHideTimerRef.current) {
-        clearTimeout(headerHideTimerRef.current);
-        headerHideTimerRef.current = null;
-      }
-      setChatHeaderVisible(true);
-    } else {
-      if (view === 'chat' && isAndroidPlatform()) {
-        resetHeaderHideTimer();
-      }
-    }
-  }, [view, resetHeaderHideTimer]);
-
-  // Start 3-second timer only upon successfully entering active chat; clean up on leave
-  useEffect(() => {
-    if (view === 'chat' && isAndroidPlatform()) {
-      // eslint-disable-next-line react/set-state-in-effect
-      resetHeaderHideTimer();
-    } else {
-      if (headerHideTimerRef.current) {
-        clearTimeout(headerHideTimerRef.current);
-        headerHideTimerRef.current = null;
-      }
-      setChatHeaderVisible(true);
-    }
-    return () => {
-      if (headerHideTimerRef.current) {
-        clearTimeout(headerHideTimerRef.current);
-        headerHideTimerRef.current = null;
-      }
-    };
-  }, [view, resetHeaderHideTimer]);
+    setChatHeaderVisible(true);
+  }, []);
 
   // Toasts
   const [toasts, setToasts] = useState([]);
@@ -277,9 +300,9 @@ export default function App() {
         return;
       }
 
-      // 2. Sub-views return to landing
+      // 2. Sub-views return to homeView (app-launcher on native, landing on web)
       if (view === 'create' || view === 'join' || view === 'join-link' || view === 'terms' || view === 'privacy' || view === 'mobile-handoff') {
-        setView('landing');
+        setView(homeView);
         return;
       }
 
@@ -288,7 +311,7 @@ export default function App() {
         if (sessionId && passcode) {
           setView('create');
         } else {
-          setView('landing');
+          setView(homeView);
         }
         return;
       }
@@ -299,8 +322,8 @@ export default function App() {
         return;
       }
 
-      // 4. On landing or expired: double-press back to exit app cleanly
-      if (view === 'landing' || view === 'expired') {
+      // 4. On home screen or expired: double-press back to exit app cleanly
+      if (view === homeView || view === 'expired') {
         const now = Date.now();
         if (now - lastBackPressRef.current < 2000) {
           CapApp.exitApp();
@@ -316,6 +339,10 @@ export default function App() {
         const urlStr = data.url;
         const match = urlStr.match(/\/join\/([a-zA-Z0-9_-]+)/);
         if (match && match[1]) {
+          const hashMatch = urlStr.match(/#([a-zA-Z0-9_-]+)/);
+          if (hashMatch && hashMatch[1] && typeof window !== 'undefined') {
+            window.location.hash = hashMatch[1];
+          }
           setJoinToken(match[1]);
           setView('join-link');
         }
@@ -336,7 +363,8 @@ export default function App() {
     securityModalOpen,
     clearChatModalOpen,
     burnSessionModalOpen,
-    leaveModalOpen
+    leaveModalOpen,
+    homeView
   ]);
 
   // Route detection: Listen for /join/:token in URL
@@ -421,6 +449,14 @@ export default function App() {
       setExpiresAt(data.expiresAt);
       setAuthTicket(data.ticket);
       setJoinToken(data.joinToken);
+      saveActiveSession({
+        sessionId: newSessionId,
+        passcode: newPasscode,
+        expiresAt: data.expiresAt,
+        authTicket: data.ticket,
+        joinToken: data.joinToken,
+        view: 'create'
+      });
       playSessionCreatedSound();
       setView('create');
       console.log('[U2U] Session created successfully');
@@ -447,6 +483,14 @@ export default function App() {
     setCryptoKey(key);
     setExpiresAt(expAt);
     setAuthTicket(ticket);
+    saveActiveSession({
+      sessionId: targetSessionId,
+      passcode: targetPasscode,
+      expiresAt: expAt,
+      authTicket: ticket,
+      joinToken,
+      view: 'identity-select'
+    });
 
     // Immediately sanitize browser URL and clear fragment
     try {
@@ -495,6 +539,14 @@ export default function App() {
       setCryptoKey(key);
       setExpiresAt(data.expiresAt);
       setAuthTicket(data.ticket);
+      saveActiveSession({
+        sessionId: cleanId,
+        passcode: cleanPasscode,
+        expiresAt: data.expiresAt,
+        authTicket: data.ticket,
+        joinToken: '',
+        view: 'identity-select'
+      });
 
       setView('identity-select');
       return Promise.resolve();
@@ -534,11 +586,12 @@ export default function App() {
     addToast('Connected securely');
   };
 
-  const handleCancelIdentitySelection = () => {
+  // eslint-disable-next-line no-unused-vars -- retained for future use (Android back-button logic mirrors this inline)
+  const _handleCancelIdentitySelection = () => {
     if (sessionId && passcode) {
       setView('create');
     } else {
-      setView('landing');
+      setView(homeView);
     }
   };
 
@@ -573,7 +626,7 @@ export default function App() {
       avatar: 'neon-neko'
     });
     setDeleteProfileModalOpen(false);
-    setView('landing');
+    setView(homeView);
     addToast('Your permanent profile has been deleted. This action cannot be undone.');
   };
 
@@ -593,6 +646,7 @@ export default function App() {
       clearTimeout(headerHideTimerRef.current);
       headerHideTimerRef.current = null;
     }
+    clearActiveSession();
     setSessionId('');
     setPasscode('');
     setCryptoKey(null);
@@ -614,13 +668,13 @@ export default function App() {
 
   const handleLeaveSession = () => {
     resetSession();
-    setView('landing');
+    setView(homeView);
     addToast('Left session');
   };
 
   const handleSessionBurned = () => {
     resetSession();
-    setView('landing');
+    setView(homeView);
     addToast("It's gone.");
   };
 
@@ -639,29 +693,38 @@ export default function App() {
         <div className="ambient-subtle-glow" />
       </div>
 
-      <Header
-        view={view}
-        setView={setView}
-        sessionId={sessionId}
-        expiresAt={expiresAt}
-        connectionStatus={view === 'chat' ? connectionStatus : undefined}
-        peerPresent={view === 'chat' ? peerPresent : false}
-        onOpenSecurity={() => setSecurityModalOpen(true)}
-        onOpenClearChat={() => setClearChatModalOpen(true)}
-        onOpenBurnSession={() => setBurnSessionModalOpen(true)}
-        onOpenLeave={() => setLeaveModalOpen(true)}
-        onLeaveSession={handleLeaveSession}
-        theme={theme}
-        setTheme={setTheme}
-        chatHeaderVisible={chatHeaderVisible}
-        onHeaderInteraction={resetHeaderHideTimer}
-        onHeaderMenuChange={handleHeaderMenuChange}
-        selfIdentity={selfIdentity}
-        peerIdentity={peerIdentity}
-        identityHeaderVisible={identityHeaderVisible}
-        activeProfile={activeProfile}
-        onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
-      />
+      {/*
+        Single Header Architecture:
+        - When on the website landing page (view === 'landing'), LandingView renders its own website navigation header (site-nav). Header.jsx is NOT rendered.
+        - In the native app (isNative) or inside any session/chat view (view !== 'landing'), the app-owned Header.jsx is rendered.
+        - Exactly one header is ever rendered; never both together.
+      */}
+      {view !== 'landing' && (
+        <Header
+          view={view}
+          setView={setView}
+          isNative={isNative}
+          sessionId={sessionId}
+          expiresAt={expiresAt}
+          connectionStatus={view === 'chat' ? connectionStatus : undefined}
+          peerPresent={view === 'chat' ? peerPresent : false}
+          onOpenSecurity={() => setSecurityModalOpen(true)}
+          onOpenClearChat={() => setClearChatModalOpen(true)}
+          onOpenBurnSession={() => setBurnSessionModalOpen(true)}
+          onOpenLeave={() => setLeaveModalOpen(true)}
+          onLeaveSession={handleLeaveSession}
+          theme={theme}
+          setTheme={setTheme}
+          chatHeaderVisible={chatHeaderVisible}
+          onHeaderInteraction={resetHeaderHideTimer}
+          onHeaderMenuChange={handleHeaderMenuChange}
+          selfIdentity={selfIdentity}
+          peerIdentity={peerIdentity}
+          identityHeaderVisible={identityHeaderVisible}
+          activeProfile={activeProfile}
+          onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
+        />
+      )}
 
       <main className="u2u-main">
         {/* Maintenance View takes full precedence when operator activates it */}
@@ -672,14 +735,28 @@ export default function App() {
           />
         ) : (
           <>
-            {view === 'terms' && (
-              <TermsView onBack={() => setView('landing')} />
+            {/* Dedicated Native App Launcher (Native Android APK only) */}
+            {view === 'app-launcher' && (
+              <NativeAppLauncher
+                onCreateClick={handleStartCreate}
+                onJoinClick={() => setView('join')}
+                onOpenCreateProfile={() => setCreateProfileModalOpen(true)}
+                onOpenUnlockProfile={() => setUnlockProfileModalOpen(true)}
+                onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
+                activeProfile={activeProfile}
+                storedProfileMeta={activeProfile}
+                activeSession={sessionId && expiresAt ? { sessionId, expiresAt, timeRemaining: '' } : null}
+                onResumeActiveSession={() => setView('chat')}
+                onBurnActiveSession={() => setBurnSessionModalOpen(true)}
+                onOpenSecurity={() => setSecurityModalOpen(true)}
+                onOpenTerms={() => setView('terms')}
+                onOpenPrivacy={() => setView('privacy')}
+                isCreating={isCreatingSession}
+                onToast={addToast}
+              />
             )}
 
-            {view === 'privacy' && (
-              <PrivacyView onBack={() => setView('landing')} />
-            )}
-
+            {/* Public Marketing Website Landing Page (Web browsers only) */}
             {view === 'landing' && (
               <LandingView
                 onCreateClick={handleStartCreate}
@@ -689,10 +766,20 @@ export default function App() {
                 onOpenPrivacy={() => setView('privacy')}
                 onOpenCreateProfile={() => setCreateProfileModalOpen(true)}
                 onOpenUnlockProfile={() => setUnlockProfileModalOpen(true)}
+                onOpenAndroidGuidance={() => setView('mobile-handoff')}
                 activeProfile={activeProfile}
+                storedProfileMeta={activeProfile}
                 onToast={addToast}
                 isCreating={isCreatingSession}
               />
+            )}
+
+            {view === 'terms' && (
+              <TermsView onBack={() => setView(homeView)} />
+            )}
+
+            {view === 'privacy' && (
+              <PrivacyView onBack={() => setView(homeView)} />
             )}
 
             {view === 'create' && (
@@ -710,7 +797,7 @@ export default function App() {
               <JoinSessionView
                 onJoinSubmit={handleJoinSubmit}
                 onCreateClick={handleStartCreate}
-                onBackClick={() => setView('landing')}
+                onBackClick={() => setView(homeView)}
               />
             )}
 
@@ -722,7 +809,7 @@ export default function App() {
                 onCreateClick={handleStartCreate}
                 onGoHome={() => {
                   try { window.history.replaceState(null, '', '/'); } catch {}
-                  setView('landing');
+                  setView(homeView);
                 }}
                 onToast={addToast}
               />
@@ -739,44 +826,56 @@ export default function App() {
 
             {view === 'identity-select' && (
               <IdentitySelectionView
-                initialIdentity={selfIdentity}
-                onConfirm={handleConfirmIdentity}
-                onCancel={handleCancelIdentitySelection}
+                initialName={selfIdentity?.displayName}
+                initialAvatar={selfIdentity?.avatar}
+                onConfirmIdentity={handleConfirmIdentity}
               />
             )}
 
-            {view === 'chat' && cryptoKey && (
-              <ChatView
-                sessionId={sessionId}
-                cryptoKey={cryptoKey}
-                clientId={clientId}
-                authTicket={authTicket}
-                connectionStatus={connectionStatus}
-                setConnectionStatus={setConnectionStatus}
-                peerPresent={peerPresent}
-                setPeerPresent={setPeerPresent}
-                onRefreshTicket={handleRefreshTicket}
-                onLeave={handleLeaveSession}
-                onSessionBurned={handleSessionBurned}
-                onSessionExpired={handleSessionExpired}
-                onToast={addToast}
-                securityModalOpen={securityModalOpen}
-                setSecurityModalOpen={setSecurityModalOpen}
-                clearChatModalOpen={clearChatModalOpen}
-                setClearChatModalOpen={setClearChatModalOpen}
-                burnSessionModalOpen={burnSessionModalOpen}
-                setBurnSessionModalOpen={setBurnSessionModalOpen}
-                leaveModalOpen={leaveModalOpen}
-                setLeaveModalOpen={setLeaveModalOpen}
-                onRevealHeader={resetHeaderHideTimer}
-                selfIdentity={selfIdentity}
-                onPeerIdentityChange={setPeerIdentity}
-                onScrollDirectionChange={(dir) => setIdentityHeaderVisible(dir === 'up')}
-              />
+            {view === 'chat' && (
+              cryptoKey ? (
+                <ChatView
+                  sessionId={sessionId}
+                  cryptoKey={cryptoKey}
+                  clientId={clientId}
+                  authTicket={authTicket}
+                  connectionStatus={connectionStatus}
+                  setConnectionStatus={setConnectionStatus}
+                  peerPresent={peerPresent}
+                  setPeerPresent={setPeerPresent}
+                  onRefreshTicket={handleRefreshTicket}
+                  onLeave={handleLeaveSession}
+                  onSessionBurned={handleSessionBurned}
+                  onSessionExpired={handleSessionExpired}
+                  onToast={addToast}
+                  securityModalOpen={securityModalOpen}
+                  setSecurityModalOpen={setSecurityModalOpen}
+                  clearChatModalOpen={clearChatModalOpen}
+                  setClearChatModalOpen={setClearChatModalOpen}
+                  burnSessionModalOpen={burnSessionModalOpen}
+                  setBurnSessionModalOpen={setBurnSessionModalOpen}
+                  leaveModalOpen={leaveModalOpen}
+                  setLeaveModalOpen={setLeaveModalOpen}
+                  onRevealHeader={resetHeaderHideTimer}
+                  selfIdentity={selfIdentity}
+                  onPeerIdentityChange={setPeerIdentity}
+                  onScrollDirectionChange={(dir) => setIdentityHeaderVisible(dir === 'up')}
+                />
+              ) : (
+                <div className="flow-wrapper">
+                  <div className="flow-card flow-card-compact" style={{ textAlign: 'center' }}>
+                    <Loader2 size={32} className="animate-spin" style={{ margin: '20px auto', color: 'var(--accent)' }} />
+                    <p style={{ color: 'var(--text-secondary)' }}>Restoring encrypted session…</p>
+                  </div>
+                </div>
+              )
             )}
 
             {view === 'expired' && (
-              <ExpiredView onCreateNew={handleStartCreate} />
+              <ExpiredView
+                onCreateNew={handleStartCreate}
+                onGoHome={() => setView(homeView)}
+              />
             )}
           </>
         )}

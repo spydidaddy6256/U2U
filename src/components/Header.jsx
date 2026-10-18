@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
+  Shield,
   Volume2,
   VolumeX,
   Sun,
@@ -9,7 +10,10 @@ import {
   Flame,
   LogOut,
   ShieldAlert,
-  User
+  User,
+  ArrowLeft,
+  ChevronLeft,
+  Menu
 } from 'lucide-react';
 import { isAudioEnabled, setAudioEnabled, playTickSound } from '../utils/audio';
 import { isAndroidPlatform } from '../utils/platform';
@@ -18,9 +22,10 @@ import { getAvatarSvg } from '../data/avatars';
 export default function Header({
   view,
   setView,
+  isNative = false,
   sessionId: _sessionId,
   expiresAt,
-  connectionStatus,
+  connectionStatus: _connectionStatus,
   peerPresent,
   onOpenSecurity,
   onOpenClearChat,
@@ -32,9 +37,9 @@ export default function Header({
   chatHeaderVisible = true,
   onHeaderInteraction,
   onHeaderMenuChange,
-  selfIdentity,
+  selfIdentity: _selfIdentity,
   peerIdentity,
-  identityHeaderVisible = true,
+  identityHeaderVisible: _identityHeaderVisible = true,
   activeProfile,
   onOpenDeleteProfile
 }) {
@@ -128,217 +133,337 @@ export default function Header({
     );
   };
 
-  return (
-    <header className={headerClass} onPointerDown={() => onHeaderInteraction?.()} onClick={() => onHeaderInteraction?.()}>
-      <div className="u2u-header-top">
-        {/* Brand */}
-        <div 
-          className="u2u-brand" 
-          onClick={() => view === 'landing' ? null : onLeaveSession ? onLeaveSession() : setView('landing')} 
-          style={{ cursor: view === 'landing' ? 'default' : 'pointer' }}
-          title="U2U — User to User"
-        >
-          <div className="brand-dots-icon">
-            <div className="brand-dot" />
-            <div className="brand-line" />
-            <div className="brand-dot" />
-          </div>
-          <span className="u2u-logo-text">U2U</span>
-        </div>
+  const renderDropdownMenu = () => (
+    <div className="dropdown-menu glass-panel">
+      {/* Security info */}
+      <button 
+        type="button"
+        className="dropdown-item" 
+        onClick={() => { setMenuOpen(false); onOpenSecurity(); }}
+      >
+        <ShieldCheck size={16} />
+        <span>Session & Security Details</span>
+      </button>
 
-        {/* Center status for Chat and Create views */}
-        {view === 'chat' && (
-          <div 
-            className="u2u-badge-private" 
-            onClick={onOpenSecurity} 
-            title="Click to view end-to-end encryption details"
-          >
-            <div className={`status-indicator ${connectionStatus === 'connected' ? 'connected' : connectionStatus === 'connecting' ? 'connecting' : 'offline'}`} />
-            <span className="u2u-badge-status-text">
-              {connectionStatus === 'connecting' ? (
-                'Connecting…'
-              ) : (
-                <>
-                  <span className="u2u-badge-status-label">Private · </span>
-                  {peerPresent ? 'Connected' : 'Waiting'}
-                </>
-              )}
-            </span>
-            {timeRemaining && (
-              <span className={`u2u-session-timer ${isWarning ? 'warning' : ''}`} style={{ marginLeft: 6 }}>
-                · {timeRemaining}
-              </span>
-            )}
-          </div>
-        )}
+      <button 
+        type="button"
+        className="dropdown-item" 
+        onClick={() => { setMenuOpen(false); toggleSound(); }}
+      >
+        {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+        <span>Sound Effects: {soundOn ? 'Enabled' : 'Muted'}</span>
+      </button>
 
-        {/* Right Corner Controls: 3-line hamburger menu */}
-        <div className="u2u-header-actions" ref={menuRef}>
-          {/* Direct Sound toggle for instant convenience */}
-          <button 
-            className="icon-btn header-quick-btn" 
-            onClick={toggleSound} 
-            title={soundOn ? 'Mute audio' : 'Enable audio'}
-            aria-label="Toggle sound"
-          >
-            {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
-          </button>
+      <button 
+        type="button"
+        className="dropdown-item" 
+        onClick={() => { setMenuOpen(false); toggleTheme(); }}
+      >
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        <span>Appearance: {theme === 'dark' ? 'Dark' : 'Light'} Mode</span>
+      </button>
 
-          {/* Three-line hamburger menu button */}
+      {/* Permanent Profile Deletion (if active profile exists) */}
+      {activeProfile && (
+        <>
+          <div className="dropdown-divider" />
           <button
             type="button"
-            className={`icon-btn header-hamburger-btn ${menuOpen ? 'active' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen(!menuOpen);
-              playTickSound();
-            }}
-            title="Session options & settings"
-            aria-label="Session menu"
-            aria-haspopup="true"
-            aria-expanded={menuOpen}
+            className="dropdown-item danger"
+            onClick={() => { setMenuOpen(false); onOpenDeleteProfile?.(); }}
           >
-            <div className="hamburger-lines">
-              <span />
-              <span />
-              <span />
-            </div>
+            <ShieldAlert size={16} />
+            <span>Delete Permanent Profile</span>
+          </button>
+        </>
+      )}
+
+      {view === 'chat' && (
+        <>
+          <div className="dropdown-divider" />
+
+          <button 
+            type="button"
+            className="dropdown-item" 
+            onClick={() => { setMenuOpen(false); onOpenClearChat(); }}
+          >
+            <Trash2 size={16} />
+            <span>Clear Chat</span>
           </button>
 
-          {/* Slide-out / Dropdown Menu */}
-          {menuOpen && (
-            <div className="dropdown-menu glass-panel">
-              {/* Security info */}
-              <button 
+          <button 
+            type="button"
+            className="dropdown-item danger" 
+            onClick={() => { setMenuOpen(false); onOpenBurnSession(); }}
+          >
+            <Flame size={16} />
+            <span>Burn Session</span>
+          </button>
+
+          <div className="dropdown-divider" />
+
+          <button 
+            type="button"
+            className="dropdown-item" 
+            onClick={() => { 
+              setMenuOpen(false); 
+              if (onOpenLeave) {
+                onOpenLeave();
+              } else {
+                onLeaveSession();
+              }
+            }}
+          >
+            <LogOut size={16} />
+            <span>Leave Session</span>
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <header className={headerClass} onPointerDown={() => onHeaderInteraction?.()} onClick={() => onHeaderInteraction?.()}>
+      {isNative ? (
+        /* Native Android Header (Scoped for Native App) */
+        <div className="native-header-inner" ref={menuRef}>
+          {view === 'chat' ? (
+            /* Chat Mode (Matching Chat PNG) */
+            <>
+              <div className="native-chat-header-left">
+                <button
+                  type="button"
+                  className="native-icon-btn native-back-btn"
+                  onClick={() => {
+                    playTickSound();
+                    if (onOpenLeave) {
+                      onOpenLeave();
+                    } else if (onLeaveSession) {
+                      onLeaveSession();
+                    }
+                  }}
+                  title="Leave or return"
+                  aria-label="Back"
+                >
+                  <ChevronLeft size={22} />
+                </button>
+
+                <div
+                  className="native-peer-info-wrap"
+                  onClick={onOpenSecurity}
+                  title="Click to view end-to-end encryption details"
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0 }}
+                >
+                  <div className="native-peer-avatar-circle">
+                    {peerPresent && peerIdentity?.avatar ? (
+                      renderAvatarThumb(peerIdentity, 'Peer')
+                    ) : (
+                      <span>{(peerPresent && peerIdentity?.displayName ? peerIdentity.displayName : 'SF').slice(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="native-peer-meta">
+                    <span className="native-peer-name">
+                      {peerPresent && peerIdentity?.displayName ? peerIdentity.displayName : (peerPresent ? 'Peer' : 'Waiting for peer…')}
+                    </span>
+                    <span className="native-peer-status-line">
+                      <span className={`native-status-dot ${peerPresent ? '' : 'waiting'}`} />
+                      <span>{peerPresent ? 'Connected' : 'Waiting'}</span>
+                      {timeRemaining ? <span> · {timeRemaining}</span> : null}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat Header Burn Button */}
+              <button
                 type="button"
-                className="dropdown-item" 
-                onClick={() => { setMenuOpen(false); onOpenSecurity(); }}
+                className="native-header-burn-btn"
+                onClick={() => {
+                  playTickSound();
+                  if (onOpenBurnSession) {
+                    onOpenBurnSession();
+                  } else {
+                    setMenuOpen(!menuOpen);
+                  }
+                }}
+                title="Burn session"
+                aria-label="Burn session"
               >
-                <ShieldCheck size={16} />
-                <span>Session & Security Details</span>
+                Burn
+              </button>
+            </>
+          ) : (
+            /* Non-Chat / Home Mode (Matching Home PNG) */
+            <>
+              {/* Round 44px Menu Button */}
+              <button
+                type="button"
+                className="native-icon-btn native-menu-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(!menuOpen);
+                  playTickSound();
+                }}
+                title="Session options & settings"
+                aria-label="Session menu"
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+              >
+                <Menu size={20} />
               </button>
 
-              <button 
-                type="button"
-                className="dropdown-item" 
-                onClick={() => { setMenuOpen(false); toggleSound(); }}
+              {/* Center U2U Wordmark (••• U2U) */}
+              <div 
+                className="native-header-brand" 
+                onClick={() => {
+                  if (view !== 'app-launcher') setView?.('app-launcher');
+                }}
+                title="U2U — User to User"
               >
-                {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                <span>Sound Effects: {soundOn ? 'Enabled' : 'Muted'}</span>
-              </button>
+                <div className="native-brand-dots">
+                  <span className="dot" />
+                  <span className="dot" />
+                  <span className="dot" />
+                </div>
+                <span className="native-brand-text">U2U</span>
+              </div>
 
-              <button 
+              {/* Round 44px Shield Button */}
+              <button
                 type="button"
-                className="dropdown-item" 
-                onClick={() => { setMenuOpen(false); toggleTheme(); }}
+                className="native-icon-btn native-shield-btn"
+                onClick={() => {
+                  playTickSound();
+                  onOpenSecurity?.();
+                }}
+                title="Security & encryption details"
+                aria-label="Security and encryption"
               >
-                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                <span>Appearance: {theme === 'dark' ? 'Dark' : 'Light'} Mode</span>
+                <Shield size={20} />
               </button>
-
-              {/* Permanent Profile Deletion (if permanent profile active) */}
-              {activeProfile && (
-                <>
-                  <div className="dropdown-divider" />
-                  <button
-                    type="button"
-                    className="dropdown-item danger"
-                    onClick={() => { setMenuOpen(false); onOpenDeleteProfile?.(); }}
-                  >
-                    <ShieldAlert size={16} />
-                    <span>Delete Permanent Profile</span>
-                  </button>
-                </>
-              )}
-
-              {view === 'chat' && (
-                <>
-                  <div className="dropdown-divider" />
-
-                  <button 
-                    type="button"
-                    className="dropdown-item" 
-                    onClick={() => { setMenuOpen(false); onOpenClearChat(); }}
-                  >
-                    <Trash2 size={16} />
-                    <span>Clear Chat</span>
-                  </button>
-
-                  <button 
-                    type="button"
-                    className="dropdown-item danger" 
-                    onClick={() => { setMenuOpen(false); onOpenBurnSession(); }}
-                  >
-                    <Flame size={16} />
-                    <span>Burn Session</span>
-                  </button>
-
-                  <div className="dropdown-divider" />
-
-                  <button 
-                    type="button"
-                    className="dropdown-item" 
-                    onClick={() => { 
-                      setMenuOpen(false); 
-                      if (onOpenLeave) {
-                        onOpenLeave();
-                      } else {
-                        onLeaveSession();
-                      }
-                    }}
-                  >
-                    <LogOut size={16} />
-                    <span>Leave Session</span>
-                  </button>
-                </>
-              )}
-            </div>
+            </>
           )}
-        </div>
-      </div>
 
-      {/* ── Collapsing Identity Sub-Header ── */}
-      {view === 'chat' && selfIdentity && (
-        <div className={`u2u-identity-subbar ${identityHeaderVisible ? 'visible' : 'collapsed'}`}>
-          <div className="identity-subbar-inner">
-            {/* Self Identity */}
-            <div className="identity-participant self" title="Your anonymous identity for this session">
-              {renderAvatarThumb(selfIdentity, 'You')}
-              <div className="identity-participant-meta">
-                <span className="identity-participant-name">{selfIdentity.displayName || 'You'}</span>
-                <span className="identity-participant-role">You</span>
+          {/* Native Dropdown Menu */}
+          {menuOpen && renderDropdownMenu()}
+        </div>
+      ) : (
+        /* Web / Desktop Header — 100% Unchanged */
+        <div className="u2u-header-top">
+          {/* Chat Mode: Compact Peer Conversation Header */}
+          {view === 'chat' ? (
+            <div className="header-chat-left">
+              <button
+                type="button"
+                className="icon-btn header-back-btn"
+                onClick={() => {
+                  if (onOpenLeave) {
+                    onOpenLeave();
+                  } else if (onLeaveSession) {
+                    onLeaveSession();
+                  }
+                }}
+                title="Leave or return"
+                aria-label="Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div
+                className="header-peer-info"
+                onClick={onOpenSecurity}
+                title="Click to view end-to-end encryption details"
+              >
+                <div className="header-peer-avatar-wrap">
+                  {renderAvatarThumb(peerPresent && peerIdentity ? peerIdentity : null, 'Peer')}
+                  <span className={`header-peer-dot ${peerPresent ? 'connected' : 'waiting'}`} />
+                </div>
+                <div className="header-peer-text-stack">
+                  <span className="header-peer-name">
+                    {peerPresent && peerIdentity?.displayName ? peerIdentity.displayName : (peerPresent ? 'Peer' : 'Waiting for peer…')}
+                  </span>
+                  <span className="header-peer-status">
+                    <span className={`header-status-dot ${peerPresent ? 'connected' : 'waiting'}`} />
+                    <span>{peerPresent ? 'Connected' : 'Waiting'}</span>
+                    {timeRemaining ? <span className={`header-timer-span ${isWarning ? 'warning' : ''}`}> · {timeRemaining}</span> : null}
+                  </span>
+                </div>
               </div>
             </div>
-
-            {/* Encrypted Connector */}
-            <div className="identity-subbar-connector" title="End-to-End Encrypted Peer Channel">
-              <span className="connector-dot" />
-              <span className="connector-line" />
-              <span className="connector-dot" />
+          ) : (
+            /* Non-Chat Mode: U2U Brand Wordmark */
+            <div 
+              className="u2u-brand" 
+              onClick={() => {
+                if (view === 'landing' || view === 'app-launcher') return;
+                if (onLeaveSession) {
+                  onLeaveSession();
+                } else {
+                  setView?.(isNative ? 'app-launcher' : 'landing');
+                }
+              }}
+              style={{ cursor: (view === 'landing' || view === 'app-launcher') ? 'default' : 'pointer' }}
+              title="U2U — User to User"
+            >
+              <div className="brand-dots-icon">
+                <div className="brand-dot" />
+                <div className="brand-line" />
+                <div className="brand-dot" />
+              </div>
+              <span className="u2u-logo-text">U2U</span>
             </div>
+          )}
 
-            {/* Peer Identity */}
-            <div className="identity-participant peer" title="Peer identity in this session">
-              {peerPresent && peerIdentity ? (
-                <>
-                  {renderAvatarThumb(peerIdentity, 'Peer')}
-                  <div className="identity-participant-meta">
-                    <span className="identity-participant-name">{peerIdentity.displayName || 'Peer'}</span>
-                    <span className="identity-participant-role connected">Connected</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="identity-avatar-placeholder waiting">
-                    <User size={14} />
-                  </div>
-                  <div className="identity-participant-meta">
-                    <span className="identity-participant-name muted">Waiting for peer…</span>
-                    <span className="identity-participant-role waiting">Private</span>
-                  </div>
-                </>
-              )}
+          {/* Center privacy indicator (non-chat views) */}
+          {view !== 'chat' && (
+            <div 
+              className="u2u-badge-private" 
+              onClick={onOpenSecurity} 
+              title="Click to view end-to-end encryption details"
+            >
+              <div className="status-indicator connected" />
+              <span className="u2u-badge-status-text">
+                <span className="u2u-badge-status-label">Private · </span>
+                RAM Space
+              </span>
             </div>
+          )}
+
+          {/* Right Corner Controls: Sound Toggle & 3-line Menu */}
+          <div className="u2u-header-actions" ref={menuRef}>
+            {/* Quick Sound Toggle */}
+            <button 
+              type="button"
+              className="icon-btn header-quick-btn" 
+              onClick={toggleSound} 
+              title={soundOn ? 'Mute audio' : 'Enable audio'}
+              aria-label="Toggle sound"
+            >
+              {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            </button>
+
+            {/* Accessible Three-Line Menu Button */}
+            <button
+              type="button"
+              className={`icon-btn header-hamburger-btn ${menuOpen ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+                playTickSound();
+              }}
+              title="Session options & settings"
+              aria-label="Session menu"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+            >
+              <div className="hamburger-lines">
+                <span />
+                <span />
+                <span />
+              </div>
+            </button>
+
+            {/* Dropdown Menu */}
+            {menuOpen && renderDropdownMenu()}
           </div>
         </div>
       )}

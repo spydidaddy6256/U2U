@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Copy, Check, KeyRound, ArrowRight, ArrowLeft, AlertTriangle, Eye, EyeOff, X } from 'lucide-react';
-import { AVATAR_PRESETS } from '../../data/avatars';
-import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName } from '../../utils/identity';
+import React, { useState, useRef } from 'react';
+import { ShieldCheck, Copy, Check, KeyRound, ArrowRight, ArrowLeft, AlertTriangle, Eye, EyeOff, X, Upload } from 'lucide-react';
+import { AVATAR_PRESETS, getAvatarSvg } from '../../data/avatars';
+import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName, validateAvatarFile } from '../../utils/identity';
 import { generateMasterRecoveryKey, deriveProfileId, deriveAuthProof, saveProfileLocally } from '../../utils/profileCrypto';
 import { getApiUrl } from '../../utils/apiConfig';
 import { playTickSound, playErrorSound, playConnectedSound } from '../../utils/audio';
@@ -15,6 +15,8 @@ export default function CreateProfileModal({
   const [step, setStep] = useState(1); // 1: Identity, 2: Key Generation & Backup, 3: Optional Password, 4: Verify
   const [username, setUsername] = useState(() => generateRandomDisplayName());
   const [selectedAvatarId, setSelectedAvatarId] = useState(AVATAR_PRESETS[0].id);
+  const [customAvatar, setCustomAvatar] = useState(null);
+  const fileInputRef = useRef(null);
   const [recoveryKey, setRecoveryKey] = useState('');
   const [profileId, setProfileId] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +27,52 @@ export default function CreateProfileModal({
   const [confirmKeyInput, setConfirmKeyInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validation = validateAvatarFile(file);
+    if (!validation.valid) {
+      playErrorSound();
+      setErrorMsg(validation.error);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setErrorMsg('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCustomAvatar(reader.result);
+      setSelectedAvatarId('custom');
+      playTickSound();
+    };
+    reader.onerror = () => {
+      playErrorSound();
+      setErrorMsg('Failed to read image file');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCustomAvatar = () => {
+    playTickSound();
+    setCustomAvatar(null);
+    setSelectedAvatarId(AVATAR_PRESETS[0].id);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleTileClick = () => {
+    if (!customAvatar) {
+      fileInputRef.current?.click();
+    } else {
+      if (selectedAvatarId !== 'custom') {
+        setSelectedAvatarId('custom');
+        playTickSound();
+      } else {
+        fileInputRef.current?.click();
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -101,12 +149,13 @@ export default function CreateProfileModal({
     try {
       const cleanUser = sanitizeDisplayName(username);
       const authProof = await deriveAuthProof(recoveryKey, 'AUTH');
+      const finalAvatar = selectedAvatarId === 'custom' && customAvatar ? customAvatar : selectedAvatarId;
 
       // 1. Encrypt and save locally
       await saveProfileLocally({
         profileId,
         username: cleanUser,
-        avatar: selectedAvatarId,
+        avatar: finalAvatar,
         recoveryKey,
         password: enablePassword ? password : ''
       });
@@ -118,7 +167,7 @@ export default function CreateProfileModal({
         body: JSON.stringify({
           profileId,
           username: cleanUser,
-          avatar: selectedAvatarId,
+          avatar: finalAvatar,
           authProof
         })
       });
@@ -133,7 +182,7 @@ export default function CreateProfileModal({
       onProfileCreated?.({
         profileId,
         username: cleanUser,
-        avatar: selectedAvatarId
+        avatar: finalAvatar
       });
       onClose();
     } catch (err) {
@@ -177,6 +226,27 @@ export default function CreateProfileModal({
               Choose your public username and avatar. Your profile is anchored to a cryptographic private key generated locally on this device.
             </p>
 
+            {/* Avatar Preview Ring */}
+            <div className="modal-avatar-preview-row">
+              <div className="modal-avatar-preview-ring">
+                {selectedAvatarId === 'custom' && customAvatar ? (
+                  <img src={customAvatar} alt="Profile Avatar" className="modal-avatar-preview-img" />
+                ) : (
+                  <div
+                    className="modal-avatar-preview-svg"
+                    dangerouslySetInnerHTML={{ __html: getAvatarSvg(selectedAvatarId) }}
+                    aria-label="Selected Avatar"
+                  />
+                )}
+              </div>
+              <div className="modal-avatar-preview-meta">
+                <span className="modal-avatar-preview-name">@{sanitizeDisplayName(username, 'NewProfile')}</span>
+                <span className="modal-avatar-preview-badge">
+                  {selectedAvatarId === 'custom' && customAvatar ? 'Custom Photo' : 'Preset Avatar'}
+                </span>
+              </div>
+            </div>
+
             <div className="field-group">
               <label htmlFor="modal-username-input" className="field-label">Username</label>
               <input
@@ -193,21 +263,102 @@ export default function CreateProfileModal({
               />
             </div>
 
+            {/* Hidden file input for custom photo upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+              data-testid="profile-file-input"
+              aria-label="Upload profile photo"
+            />
+
             <div className="field-group">
-              <label className="field-label">Select Avatar</label>
-              <div className="avatar-grid compact">
+              <div className="field-label-row">
+                <label className="field-label">Select Avatar or Upload Photo</label>
+                <span className="field-caption-inline">10 presets + custom</span>
+              </div>
+              <div className="avatar-grid compact" role="radiogroup" aria-label="Avatar options">
                 {AVATAR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
                     type="button"
+                    role="radio"
+                    aria-checked={selectedAvatarId === preset.id}
                     className={`avatar-grid-item ${selectedAvatarId === preset.id ? 'selected' : ''}`}
                     onClick={() => { setSelectedAvatarId(preset.id); playTickSound(); }}
                     title={preset.name}
                   >
                     <div className="avatar-thumb" dangerouslySetInnerHTML={{ __html: preset.svg }} />
+                    <span className="avatar-thumb-name">{preset.name}</span>
                   </button>
                 ))}
+
+                {/* Upload Photo Tile */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAvatarId === 'custom' && Boolean(customAvatar)}
+                  className={`avatar-grid-item avatar-upload-tile ${selectedAvatarId === 'custom' && customAvatar ? 'selected' : ''}`}
+                  onClick={handleTileClick}
+                  title={customAvatar ? "Custom photo selected (Click to change)" : "Upload photo (Max 1 MB · JPG, PNG, WebP)"}
+                  aria-label="Upload photo"
+                  data-testid="upload-photo-tile"
+                >
+                  <div className="avatar-thumb avatar-upload-thumb">
+                    {customAvatar ? (
+                      <img src={customAvatar} alt="Custom" className="avatar-custom-thumb-img" />
+                    ) : (
+                      <Upload size={18} className="avatar-upload-icon" />
+                    )}
+                  </div>
+                  <span className="avatar-thumb-name">{customAvatar ? 'Custom' : 'Upload'}</span>
+                </button>
               </div>
+
+              {/* Custom photo management preview card */}
+              {customAvatar && (
+                <div className="custom-photo-preview-card" data-testid="custom-photo-card">
+                  <div className="custom-photo-info">
+                    <img src={customAvatar} alt="Custom photo preview" className="custom-photo-thumb" />
+                    <div className="custom-photo-meta">
+                      <span className="custom-photo-title">
+                        {selectedAvatarId === 'custom' ? 'Custom photo active' : 'Custom photo available'}
+                      </span>
+                      <span className="custom-photo-specs">JPG, PNG, WebP · Under 1 MB</span>
+                    </div>
+                  </div>
+                  <div className="custom-photo-actions">
+                    {selectedAvatarId !== 'custom' && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => { setSelectedAvatarId('custom'); playTickSound(); }}
+                      >
+                        Use Photo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Choose a different image file"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-danger-subtle"
+                      onClick={handleRemoveCustomAvatar}
+                      title="Remove custom photo"
+                    >
+                      <X size={14} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
