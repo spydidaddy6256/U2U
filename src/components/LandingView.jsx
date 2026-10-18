@@ -31,8 +31,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 export default function LandingView({
   onCreateClick,
   onJoinClick,
-  onOpenCreateProfile,
-  onOpenUnlockProfile,
+  onCreateProfileClick,
+  onUnlockProfileClick,
   onOpenSecurity,
   onOpenTerms,
   onOpenPrivacy,
@@ -356,7 +356,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card"
-              onClick={() => handleActionWithTerms(onOpenCreateProfile)}
+              onClick={() => handleActionWithTerms(onCreateProfileClick)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -374,7 +374,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card"
-              onClick={() => handleActionWithTerms(onOpenUnlockProfile)}
+              onClick={() => handleActionWithTerms(onUnlockProfileClick)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -668,12 +668,7 @@ export default function LandingView({
       <footer id="support" className="site-footer">
         <div className="footer-inner">
           <div className="footer-brand-col">
-            <div
-              className="site-brand"
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              style={{ cursor: 'pointer' }}
-              title="Return to top"
-            >
+            <div className="site-brand">
               <div className="brand-dots-icon">
                 <div className="brand-dot" />
                 <div className="brand-line" />
@@ -692,27 +687,23 @@ export default function LandingView({
 
           <div className="footer-links-col">
             <span className="footer-links-title">Security & Legal</span>
-            <div className="footer-links-list">
-              <button type="button" className="footer-link-btn" onClick={onOpenSecurity}>
-                <ShieldCheck size={14} />
-                <span>Cryptographic Architecture</span>
-              </button>
-              <button type="button" className="footer-link-btn" onClick={onOpenTerms}>
-                <FileText size={14} />
-                <span>Terms & Conditions</span>
-              </button>
-              <button type="button" className="footer-link-btn" onClick={onOpenPrivacy}>
-                <Lock size={14} />
-                <span>Privacy Policy</span>
-              </button>
-            </div>
+            <button type="button" className="footer-link-btn" onClick={onOpenSecurity}>
+              <ShieldCheck size={14} />
+              <span>Cryptographic Architecture</span>
+            </button>
+            <button type="button" className="footer-link-btn" onClick={onOpenTerms}>
+              <FileText size={14} />
+              <span>Terms & Conditions</span>
+            </button>
+            <button type="button" className="footer-link-btn" onClick={onOpenPrivacy}>
+              <Lock size={14} />
+              <span>Privacy Policy</span>
+            </button>
           </div>
         </div>
 
         <div className="footer-bottom-bar">
-          <div className="footer-bottom-inner">
-            <span>&copy; {CURRENT_YEAR} U2U. All rights reserved. Zero-knowledge communication platform.</span>
-          </div>
+          <span>&copy; {CURRENT_YEAR} U2U. All rights reserved. Zero-knowledge communication platform.</span>
         </div>
       </footer>
     </div>

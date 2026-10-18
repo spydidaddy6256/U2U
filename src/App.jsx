@@ -764,8 +764,8 @@ export default function App() {
                 onOpenSecurity={() => setSecurityModalOpen(true)}
                 onOpenTerms={() => setView('terms')}
                 onOpenPrivacy={() => setView('privacy')}
-                onOpenCreateProfile={() => setCreateProfileModalOpen(true)}
-                onOpenUnlockProfile={() => setUnlockProfileModalOpen(true)}
+                onCreateProfileClick={() => setCreateProfileModalOpen(true)}
+                onUnlockProfileClick={() => setUnlockProfileModalOpen(true)}
                 onOpenAndroidGuidance={() => setView('mobile-handoff')}
                 activeProfile={activeProfile}
                 storedProfileMeta={activeProfile}

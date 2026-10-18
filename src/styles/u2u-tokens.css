@@ -1531,4 +1531,34 @@ html.u2u-native .delete-confirm-input {
   color: var(--coral-text) !important;
 }
 
+/* Native Splash Containment */
+html.u2u-native .cinematic-launch-overlay {
+  overflow: hidden !important;
+  contain: strict;
+}
+
+html.u2u-native .launch-3d-stage {
+  width: 280px !important;
+  height: 280px !important;
+  overflow: hidden !important;
+}
+
+html.u2u-native .launch-logo-assembly {
+  width: 220px !important;
+  height: 220px !important;
+  max-width: 220px !important;
+  max-height: 220px !important;
+  overflow: hidden !important;
+}
+
+html.u2u-native .launch-logo-base-image {
+  width: 160px !important;
+  height: 160px !important;
+  max-width: 160px !important;
+  max-height: 160px !important;
+  mix-blend-mode: normal !important;
+  display: block !important;
+}
+
+
 
