@@ -175,7 +175,7 @@ export default function App() {
 
   // Android chat header state (permanently visible for native mobile reliability)
   const [chatHeaderVisible, setChatHeaderVisible] = useState(true);
-  const [_isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const isHeaderMenuOpenRef = useRef(false);
 
   const resetHeaderHideTimer = useCallback(() => {
@@ -270,6 +270,13 @@ export default function App() {
     } catch {}
 
     const backListenerPromise = CapApp.addListener('backButton', () => {
+      // 0. Close navigation drawer first if open
+      if (isHeaderMenuOpenRef.current) {
+        isHeaderMenuOpenRef.current = false;
+        setIsHeaderMenuOpen(false);
+        return;
+      }
+
       // 1. Close any open modal first
       if (createProfileModalOpen) {
         setCreateProfileModalOpen(false);
@@ -708,7 +715,11 @@ export default function App() {
           expiresAt={expiresAt}
           connectionStatus={view === 'chat' ? connectionStatus : undefined}
           peerPresent={view === 'chat' ? peerPresent : false}
+          isMenuOpen={isHeaderMenuOpen}
+          onMenuOpenChange={handleHeaderMenuChange}
           onOpenSecurity={() => setSecurityModalOpen(true)}
+          onOpenTerms={() => setView('terms')}
+          onOpenPrivacy={() => setView('privacy')}
           onOpenClearChat={() => setClearChatModalOpen(true)}
           onOpenBurnSession={() => setBurnSessionModalOpen(true)}
           onOpenLeave={() => setLeaveModalOpen(true)}

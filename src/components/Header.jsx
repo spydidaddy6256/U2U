@@ -13,7 +13,10 @@ import {
   User,
   ArrowLeft,
   ChevronLeft,
-  Menu
+  Menu,
+  X,
+  FileText,
+  Lock
 } from 'lucide-react';
 import { isAudioEnabled, setAudioEnabled, playTickSound } from '../utils/audio';
 import { isAndroidPlatform } from '../utils/platform';
@@ -27,7 +30,11 @@ export default function Header({
   expiresAt,
   connectionStatus: _connectionStatus,
   peerPresent,
+  isMenuOpen,
+  onMenuOpenChange,
   onOpenSecurity,
+  onOpenTerms,
+  onOpenPrivacy,
   onOpenClearChat,
   onOpenBurnSession,
   onOpenLeave,
@@ -44,10 +51,51 @@ export default function Header({
   onOpenDeleteProfile
 }) {
   const [soundOn, setSoundOn] = useState(isAudioEnabled());
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [internalMenuOpen, setInternalMenuOpen] = useState(false);
+  const menuOpen = isMenuOpen !== undefined ? isMenuOpen : internalMenuOpen;
+  const setMenuOpen = useCallback((next) => {
+    setInternalMenuOpen((current) => {
+      const active = isMenuOpen !== undefined ? isMenuOpen : current;
+      const val = typeof next === 'function' ? next(active) : next;
+      onMenuOpenChange?.(val);
+      onHeaderMenuChange?.(val);
+      return val;
+    });
+  }, [isMenuOpen, onMenuOpenChange, onHeaderMenuChange]);
   const [timeRemaining, setTimeRemaining] = useState('');
   const [isWarning, setIsWarning] = useState(false);
   const menuRef = useRef(null);
+  const hamburgerBtnRef = useRef(null);
+  const drawerCloseBtnRef = useRef(null);
+  const prevMenuOpenRef = useRef(menuOpen);
+  const touchStartXRef = useRef(0);
+
+  // Focus management when drawer opens / closes on native
+  useEffect(() => {
+    if (!isNative) return;
+    if (menuOpen && !prevMenuOpenRef.current) {
+      const timer = setTimeout(() => {
+        drawerCloseBtnRef.current?.focus();
+      }, 50);
+      prevMenuOpenRef.current = true;
+      return () => clearTimeout(timer);
+    } else if (!menuOpen && prevMenuOpenRef.current) {
+      hamburgerBtnRef.current?.focus();
+      prevMenuOpenRef.current = false;
+    }
+  }, [menuOpen, isNative]);
+
+  const handleTouchStart = (e) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    const diff = e.changedTouches[0].clientX - touchStartXRef.current;
+    if (diff < -50) {
+      setMenuOpen(false);
+      playTickSound();
+    }
+  };
 
   // Notify parent of menu open/close to pause auto-hide timer
   useEffect(() => {
@@ -63,7 +111,7 @@ export default function Header({
     }
     document.addEventListener('pointerdown', handleClickOutside);
     return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, []);
+  }, [setMenuOpen]);
 
   // Expiration countdown
   useEffect(() => {
@@ -222,6 +270,176 @@ export default function Header({
     </div>
   );
 
+  const renderNativeDrawer = () => (
+    <>
+      <div
+        className="native-drawer-scrim"
+        onClick={() => setMenuOpen(false)}
+        aria-hidden="true"
+      />
+      <aside
+        className="native-drawer"
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="native-drawer-header">
+          <div className="native-drawer-brand">
+            <div className="native-brand-dots">
+              <span className="dot" />
+              <span className="dot" />
+              <span className="dot" />
+            </div>
+            <span className="native-brand-text">U2U</span>
+          </div>
+          <button
+            ref={drawerCloseBtnRef}
+            type="button"
+            className="native-drawer-close-btn"
+            onClick={() => { setMenuOpen(false); playTickSound(); }}
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="native-drawer-nav">
+          <button
+            type="button"
+            className="native-drawer-item"
+            onClick={() => {
+              setMenuOpen(false);
+              onOpenSecurity?.();
+            }}
+          >
+            <div className="native-drawer-item-icon">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="native-drawer-item-text">
+              <span className="native-drawer-item-title">Session & Security</span>
+              <span className="native-drawer-item-sub">Zero-knowledge details</span>
+            </div>
+          </button>
+
+          <div
+            className="native-drawer-item native-drawer-switch-row"
+            onClick={toggleSound}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSound();
+              }
+            }}
+          >
+            <div className="native-drawer-item-icon">
+              {soundOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </div>
+            <div className="native-drawer-item-text">
+              <span className="native-drawer-item-title">Sound effects</span>
+              <span className="native-drawer-item-sub">{soundOn ? 'Enabled' : 'Muted'}</span>
+            </div>
+            <div 
+              className={`native-toggle-switch ${soundOn ? 'active' : ''}`}
+              role="switch"
+              aria-checked={soundOn}
+              aria-label="Toggle sound effects"
+            >
+              <span className="native-toggle-switch-thumb" />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="native-drawer-item"
+            onClick={toggleTheme}
+          >
+            <div className="native-drawer-item-icon">
+              {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+            </div>
+            <div className="native-drawer-item-text">
+              <span className="native-drawer-item-title">Appearance</span>
+              <span className="native-drawer-item-sub">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+            </div>
+          </button>
+
+          <div className="native-drawer-divider" />
+
+          <button
+            type="button"
+            className="native-drawer-item"
+            onClick={() => {
+              setMenuOpen(false);
+              if (onOpenTerms) {
+                onOpenTerms();
+              } else {
+                setView?.('terms');
+              }
+            }}
+          >
+            <div className="native-drawer-item-icon">
+              <FileText size={20} />
+            </div>
+            <div className="native-drawer-item-text">
+              <span className="native-drawer-item-title">Terms of Service</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="native-drawer-item"
+            onClick={() => {
+              setMenuOpen(false);
+              if (onOpenPrivacy) {
+                onOpenPrivacy();
+              } else {
+                setView?.('privacy');
+              }
+            }}
+          >
+            <div className="native-drawer-item-icon">
+              <Lock size={20} />
+            </div>
+            <div className="native-drawer-item-text">
+              <span className="native-drawer-item-title">Privacy Policy</span>
+            </div>
+          </button>
+
+          {activeProfile && (
+            <>
+              <div className="native-drawer-divider" />
+              <button
+                type="button"
+                className="native-drawer-item danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenDeleteProfile?.();
+                }}
+              >
+                <div className="native-drawer-item-icon">
+                  <ShieldAlert size={20} />
+                </div>
+                <div className="native-drawer-item-text">
+                  <span className="native-drawer-item-title">Delete Permanent Profile</span>
+                  <span className="native-drawer-item-sub">Wipe keys from device</span>
+                </div>
+              </button>
+            </>
+          )}
+        </nav>
+
+        <div className="native-drawer-footer">
+          <span>U2U · RAM-Only Ephemeral Channel</span>
+        </div>
+      </aside>
+    </>
+  );
+
   return (
     <header className={headerClass} onPointerDown={() => onHeaderInteraction?.()} onClick={() => onHeaderInteraction?.()}>
       {isNative ? (
@@ -295,22 +513,46 @@ export default function Header({
           ) : (
             /* Non-Chat / Home Mode (Matching Home PNG) */
             <>
-              {/* Round 44px Menu Button */}
-              <button
-                type="button"
-                className="native-icon-btn native-menu-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(!menuOpen);
-                  playTickSound();
-                }}
-                title="Session options & settings"
-                aria-label="Session menu"
-                aria-haspopup="true"
-                aria-expanded={menuOpen}
-              >
-                <Menu size={20} />
-              </button>
+              {/* Home Screen: Left Hamburger opens Drawer. Sub-screens: Left button is Back */}
+              {view === 'app-launcher' ? (
+                <button
+                  ref={hamburgerBtnRef}
+                  type="button"
+                  className="native-icon-btn native-menu-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(!menuOpen);
+                    playTickSound();
+                  }}
+                  title="Session options & settings"
+                  aria-label="Open navigation menu"
+                  aria-haspopup="true"
+                  aria-expanded={menuOpen}
+                >
+                  <Menu size={20} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="native-icon-btn native-back-btn"
+                  onClick={() => {
+                    playTickSound();
+                    if (view === 'identity-select') {
+                      if (_sessionId) {
+                        setView?.('create');
+                      } else {
+                        setView?.('app-launcher');
+                      }
+                    } else {
+                      setView?.('app-launcher');
+                    }
+                  }}
+                  title="Back"
+                  aria-label="Back"
+                >
+                  <ChevronLeft size={22} />
+                </button>
+              )}
 
               {/* Center U2U Wordmark (••• U2U) */}
               <div 
@@ -344,8 +586,8 @@ export default function Header({
             </>
           )}
 
-          {/* Native Dropdown Menu */}
-          {menuOpen && renderDropdownMenu()}
+          {/* Left Drawer Menu on native (Home screen only) */}
+          {view === 'app-launcher' && menuOpen && renderNativeDrawer()}
         </div>
       ) : (
         /* Web / Desktop Header — 100% Unchanged */

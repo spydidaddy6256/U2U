@@ -16,12 +16,17 @@
 
 /* ── Native Color Palette & Tokens ── */
 html.u2u-native {
+  /* ── 1. Surfaces ── */
   --bg: #0D0D0F;
-  --surface: #17171A;
+  --surface: #141417;
   --surface-2: #1A1A1E;
-  --surface-3: #26262B;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.12);
+  --surface-3: #222227;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-light: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(224, 94, 70, 0.3);
+
+  /* ── 2. Colors ── */
   --text: #F4F2EF;
   --muted: #9A9AA2;
   --coral: #E05E46;
@@ -31,22 +36,53 @@ html.u2u-native {
   --cream: #F1EEE9;
   --green: #4CC38A;
 
+  /* ── 3. Spacing Scale: 4, 8, 12, 16, 20, 24 ── */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+
+  /* ── 4. Type Scale: 12, 13, 14, 16, 18, 22, 30 (weights 500-700) ── */
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-22: 22px;
+  --text-30: 30px;
+
   /* Typography */
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-family-base: var(--font-sans);
 
-  /* Component Radii */
-  --radius-card: 28px;
-  --radius-bubble: 22px;
-  --radius-tail: 6px;
+  /* ── 5. Component Radii ── */
+  --radius-sheet: 24px;
+  --radius-card: 24px;
+  --radius-input: 14px;
   --radius-pill: 999px;
+  --radius-bubble: 20px;
+  --radius-tail: 6px;
 
-  /* Touch Targets */
+  /* ── 6. Touch Targets & Minimums ── */
   --min-touch-target: 44px;
 
-  /* Transitions */
+  /* ── 7. Transitions & Motion ── */
   --ease-native: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-native: 220ms;
+  --ease-sheet: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-sheet: 220ms;
+  --ease-drawer: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-drawer: 200ms;
+
+  /* ── 8. Shared Native Bottom Clearance ──
+   * Defined once in this shared place for all native screens, sheets, footers, and sticky action buttons.
+   * On Android WebView 3-button navigation, env(safe-area-inset-bottom) is 0px,
+   * so max(0px, 24px) + 48px yields 72px clearance.
+   * On gesture navigation devices with larger insets, it expands automatically.
+   */
+  --native-bottom-clear: calc(max(env(safe-area-inset-bottom, 0px), 24px) + 48px);
 }
 
 /* ── Native App Body & Viewport ── */
@@ -73,22 +109,28 @@ html.u2u-native .ambient-background {
 
 /* Motion accessibility */
 @media (prefers-reduced-motion: reduce) {
-  html.u2u-native * {
+  html.u2u-native *,
+  html.u2u-native .modal-dialog,
+  html.u2u-native .modal-container,
+  html.u2u-native .native-drawer,
+  html.u2u-native .native-drawer-scrim {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
 }
 
 /* ── Shared Component Styles (Native Scope) ── */
 
-/* 1. Native Header */
+/* 1. Native Header (Polished 56px, Softer Border, No Double Lines) */
 html.u2u-native .u2u-header {
-  background: rgba(13, 13, 15, 0.88) !important;
+  background: rgba(13, 13, 15, 0.94) !important;
   backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
   border-bottom: 1px solid var(--border) !important;
-  height: calc(58px + env(safe-area-inset-top, 0px)) !important;
+  height: calc(56px + env(safe-area-inset-top, 0px)) !important;
 }
 
 html.u2u-native .native-header-inner {
@@ -96,11 +138,13 @@ html.u2u-native .native-header-inner {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 58px;
+  height: 56px;
   padding: 0 16px;
+  box-sizing: border-box;
+  border: none !important;
 }
 
-/* Round 44px icon buttons */
+/* Round 44px icon buttons with subtle scale on press */
 html.u2u-native .native-icon-btn {
   width: 44px;
   height: 44px;
@@ -119,8 +163,327 @@ html.u2u-native .native-icon-btn {
 }
 
 html.u2u-native .native-icon-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.98);
   background: var(--surface-2);
+}
+
+/* ── Left Side Drawer (Native Only) ── */
+html.u2u-native .native-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 10000;
+  animation: nativeScrimFadeIn 200ms ease-out;
+}
+
+html.u2u-native .native-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 82%;
+  max-width: 320px;
+  background: var(--surface, #141417);
+  border-right: 1px solid var(--border);
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px var(--native-bottom-clear) 16px;
+  box-sizing: border-box;
+  box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+  animation: nativeDrawerSlideIn var(--dur-drawer, 200ms) var(--ease-drawer, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+html.u2u-native .native-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+html.u2u-native .native-drawer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+html.u2u-native .native-drawer-close-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease-out, background 0.15s ease-out;
+}
+
+html.u2u-native .native-drawer-close-btn:active {
+  transform: scale(0.96);
+  background: var(--surface-3);
+}
+
+html.u2u-native .native-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.u2u-native .native-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+  box-sizing: border-box;
+}
+
+html.u2u-native .native-drawer-item:active {
+  background: var(--surface-2);
+  transform: scale(0.98);
+}
+
+html.u2u-native .native-drawer-item.danger {
+  color: #ff6b6b;
+}
+
+html.u2u-native .native-drawer-item-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+}
+
+html.u2u-native .native-drawer-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+html.u2u-native .native-drawer-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+}
+
+html.u2u-native .native-drawer-item-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+html.u2u-native .native-drawer-switch-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+html.u2u-native .native-toggle-switch {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--surface-3, #222227);
+  border: 1px solid var(--border);
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background 200ms ease;
+}
+
+html.u2u-native .native-toggle-switch.active {
+  background: var(--coral, #E05E46);
+}
+
+html.u2u-native .native-toggle-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.u2u-native .native-toggle-switch.active .native-toggle-switch-thumb {
+  transform: translateX(18px);
+}
+
+html.u2u-native .native-drawer-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+  flex-shrink: 0;
+}
+
+html.u2u-native .native-drawer-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Bottom-Sheet Base Styles for All Native Modals ── */
+html.u2u-native .modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  z-index: 9999 !important;
+  padding: 0 !important;
+  animation: nativeScrimFadeIn 200ms ease-out !important;
+}
+
+html.u2u-native .modal-dialog,
+html.u2u-native .modal-container {
+  position: relative !important;
+  width: 100% !important;
+  max-width: 520px !important;
+  margin: 0 auto !important;
+  background: var(--surface, #141417) !important;
+  border-top-left-radius: 24px !important;
+  border-top-right-radius: 24px !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: none !important;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6) !important;
+  max-height: 88dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 14px 20px var(--native-bottom-clear) 20px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  animation: nativeSheetSlideUp var(--dur-sheet, 220ms) var(--ease-sheet, cubic-bezier(0.16, 1, 0.3, 1)) !important;
+}
+
+/* Drag Handle Bar Indicator at the top of sheets */
+html.u2u-native .modal-dialog::before,
+html.u2u-native .modal-container::before {
+  content: '' !important;
+  display: block !important;
+  width: 36px !important;
+  height: 4px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  margin: 0 auto 14px auto !important;
+  flex-shrink: 0 !important;
+}
+
+/* Bottom Sheet Header: Single line title + 36px close button */
+html.u2u-native .modal-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding-bottom: 12px !important;
+  margin-bottom: 14px !important;
+  border-bottom: 1px solid var(--border) !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .modal-title {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  margin: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+html.u2u-native .modal-close-btn,
+html.u2u-native .modal-header .icon-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  border-radius: 50% !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--muted) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  padding: 0 !important;
+  transition: transform 0.15s ease-out, background 0.15s ease-out !important;
+}
+
+html.u2u-native .modal-close-btn:active,
+html.u2u-native .modal-header .icon-btn:active {
+  transform: scale(0.96) !important;
+  background: var(--surface-3) !important;
+}
+
+/* Internal Scrolling for Sheets */
+html.u2u-native .modal-dialog > *:not(.modal-header):not(.modal-close-btn):not(.modal-actions-footer),
+html.u2u-native .modal-container > *:not(.modal-header):not(.modal-actions-footer),
+html.u2u-native .modal-form-content,
+html.u2u-native .wizard-step-content {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Sticky Action Buttons at Bottom of Sheet */
+html.u2u-native .modal-actions-footer {
+  margin-top: auto !important;
+  padding-top: 14px !important;
+  background: var(--surface, #141417) !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 10 !important;
+  display: flex !important;
+  gap: 12px !important;
+}
+
+/* Keyframe Animations */
+@keyframes nativeScrimFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes nativeSheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes nativeDrawerSlideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 
 /* Brand Wordmark (••• U2U) */
