@@ -66,6 +66,7 @@ export default function Header({
   const [isWarning, setIsWarning] = useState(false);
   const menuRef = useRef(null);
   const hamburgerBtnRef = useRef(null);
+  const drawerRef = useRef(null);
   const drawerCloseBtnRef = useRef(null);
   const prevMenuOpenRef = useRef(menuOpen);
   const touchStartXRef = useRef(0);

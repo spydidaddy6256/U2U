@@ -649,10 +649,6 @@ export default function App() {
   };
 
   const resetSession = () => {
-    if (headerHideTimerRef.current) {
-      clearTimeout(headerHideTimerRef.current);
-      headerHideTimerRef.current = null;
-    }
     clearActiveSession();
     setSessionId('');
     setPasscode('');
