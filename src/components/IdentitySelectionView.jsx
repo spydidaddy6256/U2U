@@ -3,6 +3,7 @@ import { RefreshCw, Upload, X, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AVATAR_PRESETS, getAvatarSvg } from '../data/avatars';
 import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName, validateAvatarFile } from '../utils/identity';
 import { playTickSound, playErrorSound } from '../utils/audio';
+import { isNativeAndroid } from '../utils/apiConfig';
 
 export default function IdentitySelectionView({
   onConfirmIdentity,
@@ -11,6 +12,7 @@ export default function IdentitySelectionView({
   title = 'Choose Your Session Identity',
   subtitle = 'Pick a temporary anonymous name and avatar. No real personal information required.'
 }) {
+  const isNative = isNativeAndroid();
   const [displayName, setDisplayName] = useState(() => initialName || generateRandomDisplayName());
   const [selectedAvatarId, setSelectedAvatarId] = useState(() => {
     if (initialAvatar && initialAvatar.startsWith('data:')) return 'custom';
@@ -148,7 +150,7 @@ export default function IdentitySelectionView({
                 className="btn btn-secondary icon-btn-square"
                 onClick={handleRefreshName}
                 title="Generate another anonymous name"
-                aria-label="Generate random name"
+                aria-label={isNative ? "Random name" : "Generate random name"}
               >
                 <RefreshCw size={18} />
               </button>
@@ -172,19 +174,21 @@ export default function IdentitySelectionView({
               type="button"
               role="tab"
               aria-selected={activeTab === 'presets'}
+              aria-label="Choose an Avatar"
               className={`avatar-tab ${activeTab === 'presets' ? 'active' : ''}`}
               onClick={() => { setActiveTab('presets'); playTickSound(); }}
             >
-              Choose an Avatar
+              {isNative ? 'Avatars' : 'Choose an Avatar'}
             </button>
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === 'custom'}
+              aria-label="Use Your Own Picture"
               className={`avatar-tab ${activeTab === 'custom' ? 'active' : ''}`}
               onClick={() => { setActiveTab('custom'); playTickSound(); }}
             >
-              Use Your Own Picture
+              {isNative ? 'Your photo' : 'Use Your Own Picture'}
             </button>
           </div>
 
@@ -293,30 +297,61 @@ export default function IdentitySelectionView({
           {activeTab === 'custom' && (
             <div className="custom-upload-section">
               {customAvatarData ? (
-                <div className="custom-uploaded-card">
-                  <img src={customAvatarData} alt="Uploaded" className="custom-uploaded-thumb" />
-                  <div className="custom-uploaded-meta">
-                    <span className="custom-uploaded-text">Custom Picture Ready</span>
-                    <span className="custom-uploaded-sub">Stored locally for this session</span>
+                isNative ? (
+                  <div className="custom-uploaded-card">
+                    <div className="custom-uploaded-row1">
+                      <img src={customAvatarData} alt="Uploaded" className="custom-uploaded-thumb" />
+                      <div className="custom-uploaded-meta">
+                        <span className="custom-uploaded-text">Custom Picture Ready</span>
+                        <span className="custom-uploaded-sub">Stored locally for this session</span>
+                      </div>
+                    </div>
+                    <div className="custom-uploaded-row2">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Change picture"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm btn-danger-subtle"
+                        onClick={handleRemoveCustom}
+                        title="Remove custom picture"
+                      >
+                        <X size={14} />
+                        <span>Remove</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Change picture"
-                  >
-                    Change
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm btn-danger-subtle"
-                    onClick={handleRemoveCustom}
-                    title="Remove custom picture"
-                  >
-                    <X size={14} />
-                    <span>Remove</span>
-                  </button>
-                </div>
+                ) : (
+                  <div className="custom-uploaded-card">
+                    <img src={customAvatarData} alt="Uploaded" className="custom-uploaded-thumb" />
+                    <div className="custom-uploaded-meta">
+                      <span className="custom-uploaded-text">Custom Picture Ready</span>
+                      <span className="custom-uploaded-sub">Stored locally for this session</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Change picture"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-danger-subtle"
+                      onClick={handleRemoveCustom}
+                      title="Remove custom picture"
+                    >
+                      <X size={14} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                )
               ) : (
                 <div
                   className="upload-dropzone"
