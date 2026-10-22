@@ -152,48 +152,50 @@ export default function UnlockProfileModal({
         {/* UNLOCK MODE */}
         {mode === 'unlock' && storedProfileMeta && (
           <form onSubmit={handleUnlock} className="modal-form-content">
-            <div className="profile-identity-chip">
-              <span className="profile-chip-name">{storedProfileMeta.username}</span>
-              <span className="profile-chip-id">{storedProfileMeta.profileId}</span>
+            <div className="modal-body">
+              <div className="profile-identity-chip">
+                <span className="profile-chip-name">{storedProfileMeta.username}</span>
+                <span className="profile-chip-id">{storedProfileMeta.profileId}</span>
+              </div>
+
+              {storedProfileMeta.hasPassword ? (
+                <div className="field-group">
+                  <label htmlFor="unlock-pass-input" className="field-label">Profile Password</label>
+                  <div className="password-input-row">
+                    <input
+                      id="unlock-pass-input"
+                      type={showPassword ? 'text' : 'password'}
+                      className="input-field"
+                      value={password}
+                      onChange={(e) => { setPassword(e.target.value); setErrorMsg(''); }}
+                      placeholder="Enter profile password"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="icon-btn pass-toggle-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="field-caption">
+                  This profile is stored securely in this browser's device vault. Click below to unlock.
+                </p>
+              )}
+
+              {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
             </div>
 
-            {storedProfileMeta.hasPassword ? (
-              <div className="field-group">
-                <label htmlFor="unlock-pass-input" className="field-label">Profile Password</label>
-                <div className="password-input-row">
-                  <input
-                    id="unlock-pass-input"
-                    type={showPassword ? 'text' : 'password'}
-                    className="input-field"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setErrorMsg(''); }}
-                    placeholder="Enter profile password"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="icon-btn pass-toggle-btn"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p className="field-caption">
-                This profile is stored securely in this browser's device vault. Click below to unlock.
-              </p>
-            )}
-
-            {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
-
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 <span>{loading ? 'Unlocking…' : 'Unlock Profile'}</span>
                 <ArrowRight size={16} />
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
               </button>
             </div>
           </form>
@@ -202,57 +204,59 @@ export default function UnlockProfileModal({
         {/* IMPORT / RESTORE MODE */}
         {mode === 'import' && (
           <form onSubmit={handleImport} className="modal-form-content">
-            <p className="wizard-description">
-              Enter your 256-bit recovery key to restore your profile on this device.
-            </p>
+            <div className="modal-body">
+              <p className="wizard-description">
+                Enter your 256-bit recovery key to restore your profile on this device.
+              </p>
 
-            <div className="field-group">
-              <label htmlFor="import-key-input" className="field-label">Recovery Key</label>
-              <textarea
-                id="import-key-input"
-                className="input-field key-confirm-textarea"
-                rows={3}
-                value={importKey}
-                onChange={(e) => { setImportKey(e.target.value); setErrorMsg(''); }}
-                placeholder="U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-                autoFocus
-              />
+              <div className="field-group">
+                <label htmlFor="import-key-input" className="field-label">Recovery Key</label>
+                <textarea
+                  id="import-key-input"
+                  className="input-field key-confirm-textarea"
+                  rows={3}
+                  value={importKey}
+                  onChange={(e) => { setImportKey(e.target.value); setErrorMsg(''); }}
+                  placeholder="U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                  autoFocus
+                />
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="import-user-input" className="field-label">Username (Optional fallback)</label>
+                <input
+                  id="import-user-input"
+                  type="text"
+                  className="input-field"
+                  value={importUsername}
+                  maxLength={24}
+                  onChange={(e) => setImportUsername(e.target.value)}
+                  placeholder="e.g. VelvetFox"
+                />
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="import-pass-input" className="field-label">Device Password (Optional)</label>
+                <input
+                  id="import-pass-input"
+                  type="password"
+                  className="input-field"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  placeholder="Optional password to protect key locally"
+                />
+              </div>
+
+              {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
             </div>
-
-            <div className="field-group">
-              <label htmlFor="import-user-input" className="field-label">Username (Optional fallback)</label>
-              <input
-                id="import-user-input"
-                type="text"
-                className="input-field"
-                value={importUsername}
-                maxLength={24}
-                onChange={(e) => setImportUsername(e.target.value)}
-                placeholder="e.g. VelvetFox"
-              />
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="import-pass-input" className="field-label">Device Password (Optional)</label>
-              <input
-                id="import-pass-input"
-                type="password"
-                className="input-field"
-                value={importPassword}
-                onChange={(e) => setImportPassword(e.target.value)}
-                placeholder="Optional password to protect key locally"
-              />
-            </div>
-
-            {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
 
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 <span>{loading ? 'Restoring…' : 'Restore Profile'}</span>
                 <ShieldCheck size={16} />
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
               </button>
             </div>
           </form>

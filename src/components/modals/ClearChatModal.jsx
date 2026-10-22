@@ -23,24 +23,24 @@ export default function ClearChatModal({ isOpen, onClose, onConfirm }) {
         </button>
 
         <h3 className="modal-title">Clear this chat?</h3>
-        <p className="modal-description">
-          This removes the conversation from this device. Messages already saved elsewhere cannot be guaranteed to disappear.
-        </p>
+        <div className="modal-body">
+          <p className="modal-description">
+            This removes the conversation from this device. Messages already saved elsewhere cannot be guaranteed to disappear.
+          </p>
+        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={onClose}
-            style={{ height: '42px' }}
-          >
-            Cancel
-          </button>
+        <div className="modal-actions-footer">
           <button 
             className="btn btn-primary" 
             onClick={() => { playTickSound(); onConfirm(); onClose(); }}
-            style={{ height: '42px' }}
           >
             Clear Chat
+          </button>
+          <button 
+            className="btn btn-secondary" 
+            onClick={onClose}
+          >
+            Cancel
           </button>
         </div>
       </div>

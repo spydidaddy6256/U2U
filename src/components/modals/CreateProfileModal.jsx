@@ -221,7 +221,8 @@ export default function CreateProfileModal({
 
         {/* STEP 1: Choose Username & Avatar */}
         {step === 1 && (
-          <div className="wizard-step-content">
+          <>
+            <div className="wizard-step-content">
             <p className="wizard-description">
               Choose your public username and avatar. Your profile is anchored to a cryptographic private key generated locally on this device.
             </p>
@@ -362,66 +363,70 @@ export default function CreateProfileModal({
             </div>
 
             {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
-
-            <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="button" className="btn btn-primary" onClick={handleProceedToKey}>
-                <span>Generate Private Key</span>
-                <ArrowRight size={16} />
-              </button>
-            </div>
           </div>
-        )}
+
+          <div className="modal-actions-footer">
+            <button type="button" className="btn btn-primary" onClick={handleProceedToKey}>
+              <span>Generate Private Key</span>
+              <ArrowRight size={16} />
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
 
         {/* STEP 2: Private Key Backup */}
         {step === 2 && (
-          <div className="wizard-step-content">
-            <div className="security-alert-box warning">
-              <AlertTriangle size={20} className="alert-icon" />
-              <div className="alert-text">
-                <strong>Save this Recovery Key safely!</strong>
-                <span>U2U is zero-knowledge. Your private key never touches our servers. If you lose this key, your profile cannot be recovered.</span>
+          <>
+            <div className="wizard-step-content">
+              <div className="security-alert-box warning">
+                <AlertTriangle size={20} className="alert-icon" />
+                <div className="alert-text">
+                  <strong>Save this Recovery Key safely!</strong>
+                  <span>U2U is zero-knowledge. Your private key never touches our servers. If you lose this key, your profile cannot be recovered.</span>
+                </div>
               </div>
-            </div>
 
-            <div className="field-group">
-              <label className="field-label">Your Cryptographic Recovery Key</label>
-              <div className="recovery-key-card">
-                <code className="recovery-key-text">{recoveryKey}</code>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm copy-key-btn"
-                  onClick={handleCopyKey}
-                >
-                  {copiedKey ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copiedKey ? 'Copied' : 'Copy Key'}</span>
-                </button>
+              <div className="field-group">
+                <label className="field-label">Your Cryptographic Recovery Key</label>
+                <div className="recovery-key-card">
+                  <code className="recovery-key-text">{recoveryKey}</code>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm copy-key-btn"
+                    onClick={handleCopyKey}
+                  >
+                    {copiedKey ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{copiedKey ? 'Copied' : 'Copy Key'}</span>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="profile-id-preview">
-              <span>Public Profile ID: </span>
-              <code>{profileId}</code>
+              <div className="profile-id-preview">
+                <span>Public Profile ID: </span>
+                <code>{profileId}</code>
+              </div>
             </div>
 
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
-                <ArrowLeft size={16} />
-                <span>Back</span>
-              </button>
               <button type="button" className="btn btn-primary" onClick={handleProceedToPassword}>
                 <span>I've Saved It · Continue</span>
                 <ArrowRight size={16} />
               </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
             </div>
-          </div>
+          </>
         )}
 
         {/* STEP 3: Optional Password Protection */}
         {step === 3 && (
-          <div className="wizard-step-content">
+          <>
+            <div className="wizard-step-content">
             <p className="wizard-description">
               You can optionally protect your locally stored private key with a password.
             </p>
@@ -481,49 +486,48 @@ export default function CreateProfileModal({
             )}
 
             {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
-
-            <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>
-                <ArrowLeft size={16} />
-                <span>Back</span>
-              </button>
-              <button type="button" className="btn btn-primary" onClick={handleProceedToVerify}>
-                <span>Proceed to Verification</span>
-                <ArrowRight size={16} />
-              </button>
-            </div>
           </div>
-        )}
+
+          <div className="modal-actions-footer">
+            <button type="button" className="btn btn-primary" onClick={handleProceedToVerify}>
+              <span>Proceed to Verification</span>
+              <ArrowRight size={16} />
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          </div>
+        </>
+      )}
 
         {/* STEP 4: Confirm Recovery Key */}
         {step === 4 && (
-          <div className="wizard-step-content">
-            <p className="wizard-description">
-              Please paste or type your Recovery Key below to verify that you have safely recorded your backup.
-            </p>
+          <>
+            <div className="wizard-step-content">
+              <p className="wizard-description">
+                Please paste or type your Recovery Key below to verify that you have safely recorded your backup.
+              </p>
 
-            <div className="field-group">
-              <label htmlFor="verify-key-input" className="field-label">Confirm Recovery Key</label>
-              <textarea
-                id="verify-key-input"
-                className="input-field key-confirm-textarea"
-                rows={3}
-                value={confirmKeyInput}
-                onChange={(e) => {
-                  setConfirmKeyInput(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="Paste U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-              />
+              <div className="field-group">
+                <label htmlFor="verify-key-input" className="field-label">Confirm Recovery Key</label>
+                <textarea
+                  id="verify-key-input"
+                  className="input-field key-confirm-textarea"
+                  rows={3}
+                  value={confirmKeyInput}
+                  onChange={(e) => {
+                    setConfirmKeyInput(e.target.value);
+                    setErrorMsg('');
+                  }}
+                  placeholder="Paste U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                />
+              </div>
+
+              {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
             </div>
 
-            {errorMsg && <div className="modal-error-banner">{errorMsg}</div>}
-
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(3)}>
-                <ArrowLeft size={16} />
-                <span>Back</span>
-              </button>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -533,8 +537,12 @@ export default function CreateProfileModal({
                 <span>{loading ? 'Creating Profile…' : 'Complete Profile'}</span>
                 <ShieldCheck size={16} />
               </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(3)}>
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

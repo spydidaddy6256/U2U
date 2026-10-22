@@ -102,28 +102,30 @@ export default function DeleteProfileModal({
         {/* STEP 1: Warning Screen */}
         {step === 1 && (
           <div className="modal-form-content">
-            <div className="security-alert-box danger">
-              <AlertTriangle size={24} className="alert-icon danger" />
-              <div className="alert-text">
-                <strong>Permanent & Irreversible Destruction</strong>
-                <span>This action will permanently delete your profile and destroy all local private keys.</span>
+            <div className="modal-body">
+              <div className="security-alert-box danger">
+                <AlertTriangle size={24} className="alert-icon danger" />
+                <div className="alert-text">
+                  <strong>Permanent & Irreversible Destruction</strong>
+                  <span>This action will permanently delete your profile and destroy all local private keys.</span>
+                </div>
               </div>
+
+              <ul className="deletion-warning-list">
+                <li>Your private key on this device will be immediately wiped and cannot be recovered without an independent backup.</li>
+                <li>Your username and avatar will be released from the server records.</li>
+                <li>Existing temporary chat sessions will not be deleted unless you burn or leave them separately.</li>
+                <li>Other participants may retain messages or photos previously delivered to their devices.</li>
+              </ul>
             </div>
 
-            <ul className="deletion-warning-list">
-              <li>Your private key on this device will be immediately wiped and cannot be recovered without an independent backup.</li>
-              <li>Your username and avatar will be released from the server records.</li>
-              <li>Existing temporary chat sessions will not be deleted unless you burn or leave them separately.</li>
-              <li>Other participants may retain messages or photos previously delivered to their devices.</li>
-            </ul>
-
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                Keep My Profile
-              </button>
               <button type="button" className="btn btn-danger" onClick={handleStepOneConfirm}>
                 <span>I Understand · Continue</span>
                 <ArrowRight size={16} />
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Keep My Profile
               </button>
             </div>
           </div>
@@ -132,54 +134,52 @@ export default function DeleteProfileModal({
         {/* STEP 2: Explicit Confirmation Screen */}
         {step === 2 && (
           <div className="modal-form-content">
-            <p className="wizard-description">
-              To prevent accidental deletion, please type <strong className="text-danger">DELETE</strong> in capital letters below to confirm.
-            </p>
+            <div className="modal-body">
+              <p className="wizard-description">
+                To prevent accidental deletion, please type <strong className="text-danger">DELETE</strong> in capital letters below to confirm.
+              </p>
 
-            <div className="field-group">
-              <label htmlFor="confirm-delete-input" className="field-label">Type DELETE to confirm</label>
-              <input
-                id="confirm-delete-input"
-                type="text"
-                className="input-field delete-confirm-input"
-                value={deleteConfirmationInput}
-                onChange={(e) => {
-                  setDeleteConfirmationInput(e.target.value);
-                  setErrorMsg('');
-                }}
-                placeholder="DELETE"
-                autoComplete="off"
-                autoFocus
-              />
-            </div>
-
-            {activeProfile?.hasPassword && (
               <div className="field-group">
-                <label htmlFor="delete-profile-password" className="field-label">Profile Password (if set)</label>
+                <label htmlFor="confirm-delete-input" className="field-label">Type DELETE to confirm</label>
                 <input
-                  id="delete-profile-password"
-                  type="password"
-                  className="input-field"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password to authenticate deletion"
+                  id="confirm-delete-input"
+                  type="text"
+                  className="input-field delete-confirm-input"
+                  value={deleteConfirmationInput}
+                  onChange={(e) => {
+                    setDeleteConfirmationInput(e.target.value);
+                    setErrorMsg('');
+                  }}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                  autoFocus
                 />
               </div>
-            )}
 
-            {errorMsg && <div className="modal-error-banner danger">{errorMsg}</div>}
+              {activeProfile?.hasPassword && (
+                <div className="field-group">
+                  <label htmlFor="delete-profile-password" className="field-label">Profile Password (if set)</label>
+                  <input
+                    id="delete-profile-password"
+                    type="password"
+                    className="input-field"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password to authenticate deletion"
+                  />
+                </div>
+              )}
 
-            {partialFailure && (
-              <div className="modal-error-banner warning">
-                Local private keys and credentials were wiped. However, server-side revocation encountered a network issue.
-              </div>
-            )}
+              {errorMsg && <div className="modal-error-banner danger">{errorMsg}</div>}
+
+              {partialFailure && (
+                <div className="modal-error-banner warning">
+                  Local private keys and credentials were wiped. However, server-side revocation encountered a network issue.
+                </div>
+              )}
+            </div>
 
             <div className="modal-actions-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
-                <ArrowLeft size={16} />
-                <span>Back</span>
-              </button>
               <button
                 type="button"
                 className="btn btn-danger"
@@ -188,6 +188,10 @@ export default function DeleteProfileModal({
               >
                 <Trash2 size={16} />
                 <span>{loading ? 'Deleting…' : 'Permanently Delete Profile'}</span>
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
+                <ArrowLeft size={16} />
+                <span>Back</span>
               </button>
             </div>
           </div>

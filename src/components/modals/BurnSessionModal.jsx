@@ -38,20 +38,15 @@ export default function BurnSessionModal({ isOpen, onClose, onConfirm }) {
           <h3 className="modal-title" style={{ margin: 0 }}>Burn this session?</h3>
         </div>
 
-        <p className="modal-description">
-          This will immediately end the conversation for both participants. Temporary server data will be deleted and this session will become unusable.
-          <br /><br />
-          You'll need to create a new session to chat again.
-        </p>
+        <div className="modal-body">
+          <p className="modal-description">
+            This will immediately end the conversation for both participants. Temporary server data will be deleted and this session will become unusable.
+            <br /><br />
+            You'll need to create a new session to chat again.
+          </p>
+        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={onClose}
-            style={{ height: '44px' }}
-          >
-            Cancel
-          </button>
+        <div className="modal-actions-footer">
           <button 
             className="btn btn-danger" 
             onClick={() => {
@@ -59,9 +54,14 @@ export default function BurnSessionModal({ isOpen, onClose, onConfirm }) {
               onConfirm();
               onClose();
             }}
-            style={{ height: '44px' }}
           >
             Burn Session
+          </button>
+          <button 
+            className="btn btn-secondary" 
+            onClick={onClose}
+          >
+            Cancel
           </button>
         </div>
       </div>

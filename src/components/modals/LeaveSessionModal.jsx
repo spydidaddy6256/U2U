@@ -38,18 +38,13 @@ export default function LeaveSessionModal({ isOpen, onClose, onConfirm }) {
           <h3 className="modal-title" style={{ margin: 0 }}>Leave this session?</h3>
         </div>
 
-        <p className="modal-description">
-          You'll disconnect from this private conversation. You can create or join another session later.
-        </p>
+        <div className="modal-body">
+          <p className="modal-description">
+            You'll disconnect from this private conversation. You can create or join another session later.
+          </p>
+        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={onClose}
-            style={{ height: '44px' }}
-          >
-            Stay
-          </button>
+        <div className="modal-actions-footer">
           <button 
             className="btn btn-primary" 
             onClick={() => {
@@ -57,9 +52,14 @@ export default function LeaveSessionModal({ isOpen, onClose, onConfirm }) {
               onConfirm();
               onClose();
             }}
-            style={{ height: '44px' }}
           >
             Leave
+          </button>
+          <button 
+            className="btn btn-secondary" 
+            onClick={onClose}
+          >
+            Stay
           </button>
         </div>
       </div>

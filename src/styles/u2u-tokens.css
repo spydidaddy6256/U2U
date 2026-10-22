@@ -376,14 +376,18 @@ html.u2u-native .modal-backdrop {
   align-items: center !important;
   z-index: 9999 !important;
   padding: 0 !important;
+  margin: 0 !important;
   animation: nativeScrimFadeIn 200ms ease-out !important;
 }
 
 html.u2u-native .modal-dialog,
 html.u2u-native .modal-container {
-  position: relative !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: 100% !important;
-  max-width: 520px !important;
+  max-width: 100% !important;
   margin: 0 auto !important;
   background: var(--surface, #141417) !important;
   border-top-left-radius: 24px !important;
@@ -393,13 +397,15 @@ html.u2u-native .modal-container {
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-bottom: none !important;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6) !important;
-  max-height: 88dvh !important;
+  max-height: 92dvh !important;
   display: flex !important;
   flex-direction: column !important;
-  padding: 14px 20px var(--native-bottom-clear) 20px !important;
+  padding: 0 !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
+  overflow-x: hidden !important;
   animation: nativeSheetSlideUp var(--dur-sheet, 220ms) var(--ease-sheet, cubic-bezier(0.16, 1, 0.3, 1)) !important;
+  z-index: 10000 !important;
 }
 
 /* Drag Handle Bar Indicator at the top of sheets */
@@ -411,7 +417,8 @@ html.u2u-native .modal-container::before {
   height: 4px !important;
   border-radius: 999px !important;
   background: rgba(255, 255, 255, 0.2) !important;
-  margin: 0 auto 14px auto !important;
+  margin: 8px auto 4px auto !important;
+  flex: 0 0 auto !important;
   flex-shrink: 0 !important;
 }
 
@@ -420,10 +427,28 @@ html.u2u-native .modal-header {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  padding-bottom: 12px !important;
-  margin-bottom: 14px !important;
+  padding: 12px 20px !important;
+  margin: 0 !important;
   border-bottom: 1px solid var(--border) !important;
+  flex: 0 0 auto !important;
   flex-shrink: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+html.u2u-native .modal-dialog > .modal-title-row,
+html.u2u-native .modal-dialog > .modal-title {
+  padding: 8px 20px 0 20px !important;
+  margin: 0 0 12px 0 !important;
+  flex: 0 0 auto !important;
+  box-sizing: border-box !important;
+}
+
+html.u2u-native .modal-dialog .modal-close-btn {
+  position: absolute !important;
+  top: 14px !important;
+  right: 16px !important;
+  z-index: 10 !important;
 }
 
 html.u2u-native .modal-title {
@@ -461,25 +486,157 @@ html.u2u-native .modal-header .icon-btn:active {
   background: var(--surface-3) !important;
 }
 
-/* Internal Scrolling for Sheets */
-html.u2u-native .modal-dialog > *:not(.modal-header):not(.modal-close-btn):not(.modal-actions-footer),
-html.u2u-native .modal-container > *:not(.modal-header):not(.modal-actions-footer),
-html.u2u-native .modal-form-content,
-html.u2u-native .wizard-step-content {
+/* Stepper: flex 0 0 auto */
+html.u2u-native .wizard-step-indicator,
+html.u2u-native .create-profile-modal .wizard-step-indicator {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 0 20px !important;
+  margin: 12px auto !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  width: 100% !important;
+  max-width: 280px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}
+
+/* BODY: flex 1 1 auto; min-height 0; scrollable */
+html.u2u-native .modal-body,
+html.u2u-native .wizard-step-content,
+html.u2u-native .modal-form-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 0 20px 16px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  transform: none !important;
+  left: 0 !important;
+  right: auto !important;
+  scroll-snap-type: none !important;
+  scroll-snap-align: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  animation: nativeStepFade 150ms ease-out !important;
+  animation-fill-mode: none !important;
   -webkit-overflow-scrolling: touch !important;
 }
 
-/* Sticky Action Buttons at Bottom of Sheet */
-html.u2u-native .modal-actions-footer {
-  margin-top: auto !important;
-  padding-top: 14px !important;
-  background: var(--surface, #141417) !important;
-  position: sticky !important;
-  bottom: 0 !important;
-  z-index: 10 !important;
+@keyframes nativeStepFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html.u2u-native .modal-form-content {
   display: flex !important;
-  gap: 12px !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Child containment: prevent horizontal overflow */
+html.u2u-native .modal-dialog *,
+html.u2u-native .modal-container * {
+  box-sizing: border-box !important;
+}
+
+html.u2u-native .wizard-step-content > *,
+html.u2u-native .modal-body > *,
+html.u2u-native .modal-form-content > * {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+html.u2u-native .wizard-step-content,
+html.u2u-native .wizard-step-content * {
+  scroll-snap-type: none !important;
+  scroll-snap-align: none !important;
+}
+
+/* FOOTER: flex 0 0 auto; NOT position:absolute/sticky/fixed */
+html.u2u-native .modal-actions-footer {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  position: static !important;
+  transform: none !important;
+  margin: 0 !important;
+  margin-top: auto !important;
+  padding: 12px 20px calc(12px + var(--native-bottom-clear)) 20px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: var(--surface, #141417) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  z-index: 10 !important;
+}
+
+/* Primary / Danger Action Button (top of column) */
+html.u2u-native .modal-actions-footer .btn-primary,
+html.u2u-native .modal-actions-footer .btn-danger {
+  width: 100% !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  flex: none !important;
+  position: static !important;
+  transform: none !important;
+  order: 1 !important;
+  margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+}
+
+/* Secondary Button (Cancel / Back / Keep / Stay) below primary */
+html.u2u-native .modal-actions-footer .btn-secondary {
+  width: 100% !important;
+  min-height: 40px !important;
+  height: 40px !important;
+  flex: none !important;
+  position: static !important;
+  transform: none !important;
+  order: 2 !important;
+  margin: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  border-radius: 10px !important;
+  box-sizing: border-box !important;
+}
+
+html.u2u-native .modal-actions-footer .btn-secondary:active {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
 }
 
 /* Keyframe Animations */
@@ -1422,36 +1579,8 @@ html.u2u-native .form-input:focus {
   box-shadow: 0 0 0 2px rgba(224, 94, 70, 0.18) !important;
 }
 
-/* Modals & Dialogs / Bottom Sheets on Native */
-html.u2u-native .modal-backdrop {
-  background: rgba(13, 13, 15, 0.82) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  display: flex !important;
-  align-items: flex-end !important;
-  justify-content: center !important;
-  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 16px)) !important;
-  box-sizing: border-box !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  z-index: 1000 !important;
-}
+/* Modals & Dialogs / Bottom Sheets on Native (see base sheet styles above) */
 
-html.u2u-native .modal-container,
-html.u2u-native .modal-dialog {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius-card) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6) !important;
-  max-height: calc(100dvh - 36px) !important;
-  width: 100% !important;
-  max-width: 480px !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  padding: 24px 20px !important;
-  box-sizing: border-box !important;
-  margin: auto 0 !important;
-}
 
 html.u2u-native .modal-header h3,
 html.u2u-native .modal-title {
@@ -1483,9 +1612,12 @@ html.u2u-native .modal-close-btn {
    3. CREATE PERMANENT PROFILE SHEET (CreateProfileModal, all 4 steps)
    ═══════════════════════════════════════════════════════════ */
 html.u2u-native .create-profile-modal {
-  position: relative !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: 100% !important;
-  max-width: 520px !important;
+  max-width: 100% !important;
   margin: 0 auto !important;
   background: var(--surface, #141417) !important;
   border-top-left-radius: 24px !important;
@@ -1496,12 +1628,12 @@ html.u2u-native .create-profile-modal {
   border-bottom: none !important;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6) !important;
   max-height: 92dvh !important;
-  height: 92dvh !important;
   display: flex !important;
   flex-direction: column !important;
   padding: 0 !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
+  overflow-x: hidden !important;
   animation: nativeSheetSlideUp var(--dur-sheet, 220ms) var(--ease-sheet, cubic-bezier(0.16, 1, 0.3, 1)) !important;
 }
 
@@ -1621,14 +1753,19 @@ html.u2u-native .create-profile-modal .wizard-line {
 
 /* ONE scrollable body */
 html.u2u-native .create-profile-modal .wizard-step-content {
-  flex: 1 !important;
+  flex: 1 1 auto !important;
   min-height: 0 !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch !important;
-  padding: 0 16px 112px 16px !important;
-  position: relative !important;
+  padding: 0 20px 16px 20px !important;
+  position: static !important;
+  transform: none !important;
+  left: 0 !important;
+  right: auto !important;
   display: flex !important;
   flex-direction: column !important;
+  gap: 12px !important;
 }
 
 /* Step 1 body: description 13px muted (max 3 lines) */
@@ -1757,13 +1894,20 @@ html.u2u-native .create-profile-modal .field-label-row .field-caption-inline {
 }
 
 /* avatar grid fully visible INSIDE the page scroll (4 columns, 8px gap, tile min 72px, names 11px, 2 lines max with ellipsis), including the Upload tile */
-html.u2u-native .create-profile-modal .avatar-grid {
+html.u2u-native .create-profile-modal .avatar-grid,
+html.u2u-native .create-profile-modal .avatar-grid.compact,
+html.u2u-native .avatar-grid,
+html.u2u-native .avatar-grid.compact {
   display: grid !important;
   grid-template-columns: repeat(4, 1fr) !important;
   gap: 8px !important;
   max-height: none !important;
+  height: auto !important;
   overflow: visible !important;
+  overflow-y: visible !important;
   padding: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 html.u2u-native .create-profile-modal .avatar-grid-item {
@@ -1984,59 +2128,8 @@ html.u2u-native .create-profile-modal .key-confirm-textarea {
   border-radius: 12px !important;
 }
 
-/* Compact sticky footer:
-   ONE primary button, 48px high, full width ("Generate Private Key") and Cancel as a text/ghost button, 40px high, below or beside;
-   the total footer must be at most 112px including padding.
-   The footer must never cover content: the body gets padding-bottom equal to the footer height.
-*/
-html.u2u-native .create-profile-modal .modal-actions-footer {
-  position: sticky !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  margin-top: auto !important;
-  margin-left: -16px !important;
-  margin-right: -16px !important;
-  margin-bottom: -112px !important;
-  display: flex !important;
-  flex-direction: column-reverse !important;
-  gap: 4px !important;
-  padding: 4px 16px var(--native-bottom-clear) 16px !important;
-  background: var(--surface, #141417) !important;
-  border-top: 1px solid var(--border) !important;
-  z-index: 10 !important;
-  max-height: 112px !important;
-  box-sizing: border-box !important;
-}
+/* Create Profile Modal Footer: Uses unified .modal-actions-footer rules */
 
-html.u2u-native .create-profile-modal .modal-actions-footer .btn-primary {
-  width: 100% !important;
-  height: 48px !important;
-  min-height: 48px !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  border-radius: 12px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 8px !important;
-}
-
-html.u2u-native .create-profile-modal .modal-actions-footer .btn-secondary {
-  width: 100% !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  background: transparent !important;
-  border: none !important;
-  color: var(--muted) !important;
-  font-size: 14px !important;
-  font-weight: 500 !important;
-  box-shadow: none !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 6px !important;
-}
 
 /* ═══════════════════════════════════════════════════════════
    4. CHOOSE YOUR SESSION IDENTITY (IdentitySelectionView)
@@ -2732,16 +2825,8 @@ html.u2u-native .pass-toggle-btn {
   cursor: pointer !important;
 }
 
-html.u2u-native .modal-actions-footer {
-  display: flex !important;
-  gap: 12px !important;
-  margin-top: 24px !important;
-  justify-content: flex-end !important;
-}
+/* Modal actions footer: handled by universal bottom sheet styles above */
 
-html.u2u-native .modal-actions-footer .btn {
-  flex: 1 !important;
-}
 
 html.u2u-native .modal-error-banner {
   background: rgba(224, 94, 70, 0.12) !important;
