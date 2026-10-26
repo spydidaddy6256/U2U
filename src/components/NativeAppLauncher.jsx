@@ -77,7 +77,6 @@ export default function NativeAppLauncher({
           value={quickRoomInput}
           onChange={(e) => setQuickRoomInput(e.target.value)}
           placeholder="Session ID or invite link"
-          onFocus={() => { playTickSound(); onJoinClick?.(); }}
         />
         <button
           type="submit"
