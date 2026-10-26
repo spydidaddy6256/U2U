@@ -7,11 +7,13 @@ import {
 } from 'lucide-react';
 import { playTickSound } from '../utils/audio';
 import { getAvatarSvg } from '../data/avatars';
+import { parseQuickJoinInput } from '../utils/inviteLink';
 import './NativeAppLauncher.css';
 
 export default function NativeAppLauncher({
   onCreateClick,
   onJoinClick,
+  onJoinWithInvite,
   onOpenCreateProfile,
   onOpenUnlockProfile,
   onOpenDeleteProfile,
@@ -27,11 +29,36 @@ export default function NativeAppLauncher({
   onToast: _onToast
 }) {
   const [quickRoomInput, setQuickRoomInput] = useState('');
+  const [quickJoinError, setQuickJoinError] = useState('');
 
   const handleQuickJoinSubmit = (e) => {
-    e.preventDefault();
-    playTickSound();
-    onJoinClick?.();
+    e?.preventDefault?.();
+    const parsed = parseQuickJoinInput(quickRoomInput);
+
+    if (parsed.type === 'empty') {
+      return;
+    }
+
+    if (parsed.type === 'session-id') {
+      playTickSound();
+      setQuickJoinError('');
+      onJoinClick?.();
+      return;
+    }
+
+    if (parsed.type === 'invite') {
+      playTickSound();
+      setQuickJoinError('');
+      setQuickRoomInput('');
+      if (onJoinWithInvite) {
+        onJoinWithInvite(parsed);
+      } else {
+        onJoinClick?.(parsed);
+      }
+      return;
+    }
+
+    setQuickJoinError('Invalid link. Paste a valid U2U invite link.');
   };
 
   const renderAvatar = (avatarKey, name) => {
@@ -75,18 +102,25 @@ export default function NativeAppLauncher({
           type="text"
           className="home-search-input"
           value={quickRoomInput}
-          onChange={(e) => setQuickRoomInput(e.target.value)}
+          onChange={(e) => {
+            setQuickRoomInput(e.target.value);
+            if (quickJoinError) setQuickJoinError('');
+          }}
           placeholder="Session ID or invite link"
         />
         <button
           type="submit"
           className="home-search-join-btn"
-          onClick={() => { playTickSound(); onJoinClick?.(); }}
           aria-label="Join session"
         >
           Join
         </button>
       </form>
+      {quickJoinError && (
+        <div className="home-search-error" role="alert">
+          {quickJoinError}
+        </div>
+      )}
 
       {/* ── Dual Side-by-Side Action Cards ── */}
       <div className="home-cards-grid">

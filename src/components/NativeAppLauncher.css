@@ -133,6 +133,15 @@
   background: var(--coral-deep, #A83420);
 }
 
+html.u2u-native .home-search-error {
+  font-size: 13px;
+  color: var(--coral-text, #E8664C);
+  margin-top: -12px;
+  margin-bottom: 0;
+  padding: 0 16px;
+  line-height: 1.4;
+}
+
 /* ── 4. Dual Side-by-Side Cards ── */
 .home-cards-grid {
   display: grid;

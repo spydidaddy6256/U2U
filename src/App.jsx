@@ -398,6 +398,18 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
 
+  const handleJoinWithInvite = useCallback((invite) => {
+    if (invite?.token) {
+      if (invite.passcode && typeof window !== 'undefined') {
+        window.location.hash = invite.passcode;
+      } else if (typeof window !== 'undefined' && window.location.hash) {
+        try { window.history.replaceState(null, '', window.location.pathname); } catch {}
+      }
+      setJoinToken(invite.token);
+      setView('join-link');
+    }
+  }, []);
+
   // ── Create Session (Server-Authoritative & Zero-Knowledge) ──
   const handleStartCreate = async () => {
     if (!canAccessWebChat()) {
@@ -746,7 +758,14 @@ export default function App() {
             {view === 'app-launcher' && (
               <NativeAppLauncher
                 onCreateClick={handleStartCreate}
-                onJoinClick={() => setView('join')}
+                onJoinClick={(invite) => {
+                  if (invite?.token) {
+                    handleJoinWithInvite(invite);
+                  } else {
+                    setView('join');
+                  }
+                }}
+                onJoinWithInvite={handleJoinWithInvite}
                 onOpenCreateProfile={() => setCreateProfileModalOpen(true)}
                 onOpenUnlockProfile={() => setUnlockProfileModalOpen(true)}
                 onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
