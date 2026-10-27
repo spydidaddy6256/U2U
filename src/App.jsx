@@ -639,29 +639,32 @@ export default function App() {
         <div className="ambient-subtle-glow" />
       </div>
 
-      <Header
-        view={view}
-        setView={setView}
-        sessionId={sessionId}
-        expiresAt={expiresAt}
-        connectionStatus={view === 'chat' ? connectionStatus : undefined}
-        peerPresent={view === 'chat' ? peerPresent : false}
-        onOpenSecurity={() => setSecurityModalOpen(true)}
-        onOpenClearChat={() => setClearChatModalOpen(true)}
-        onOpenBurnSession={() => setBurnSessionModalOpen(true)}
-        onOpenLeave={() => setLeaveModalOpen(true)}
-        onLeaveSession={handleLeaveSession}
-        theme={theme}
-        setTheme={setTheme}
-        chatHeaderVisible={chatHeaderVisible}
-        onHeaderInteraction={resetHeaderHideTimer}
-        onHeaderMenuChange={handleHeaderMenuChange}
-        selfIdentity={selfIdentity}
-        peerIdentity={peerIdentity}
-        identityHeaderVisible={identityHeaderVisible}
-        activeProfile={activeProfile}
-        onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
-      />
+      {/* Header rendered for all views EXCEPT the marketing landing page (which owns its own .site-nav) */}
+      {view !== 'landing' && (
+        <Header
+          view={view}
+          setView={setView}
+          sessionId={sessionId}
+          expiresAt={expiresAt}
+          connectionStatus={view === 'chat' ? connectionStatus : undefined}
+          peerPresent={view === 'chat' ? peerPresent : false}
+          onOpenSecurity={() => setSecurityModalOpen(true)}
+          onOpenClearChat={() => setClearChatModalOpen(true)}
+          onOpenBurnSession={() => setBurnSessionModalOpen(true)}
+          onOpenLeave={() => setLeaveModalOpen(true)}
+          onLeaveSession={handleLeaveSession}
+          theme={theme}
+          setTheme={setTheme}
+          chatHeaderVisible={chatHeaderVisible}
+          onHeaderInteraction={resetHeaderHideTimer}
+          onHeaderMenuChange={handleHeaderMenuChange}
+          selfIdentity={selfIdentity}
+          peerIdentity={peerIdentity}
+          identityHeaderVisible={identityHeaderVisible}
+          activeProfile={activeProfile}
+          onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
+        />
+      )}
 
       <main className="u2u-main">
         {/* Maintenance View takes full precedence when operator activates it */}
