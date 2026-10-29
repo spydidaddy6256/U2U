@@ -9,7 +9,8 @@ import {
   Flame,
   LogOut,
   ShieldAlert,
-  User
+  User,
+  UserCheck
 } from 'lucide-react';
 import { isAudioEnabled, setAudioEnabled, playTickSound } from '../utils/audio';
 import { isAndroidPlatform } from '../utils/platform';
@@ -36,7 +37,8 @@ export default function Header({
   peerIdentity,
   identityHeaderVisible = true,
   activeProfile,
-  onOpenDeleteProfile
+  onOpenDeleteProfile,
+  onOpenEditIdentity
 }) {
   const [soundOn, setSoundOn] = useState(isAudioEnabled());
   const [menuOpen, setMenuOpen] = useState(false);
@@ -115,16 +117,42 @@ export default function Header({
   ].filter(Boolean).join(' ');
 
   const renderAvatarThumb = (identity, fallbackName = 'You') => {
-    if (!identity) return <div className="identity-avatar-placeholder"><User size={14} /></div>;
+    if (!identity) {
+      return (
+        <div className="identity-avatar-thumb">
+          <div className="identity-avatar-placeholder"><User size={14} /></div>
+        </div>
+      );
+    }
     const avatar = identity.avatar || 'neon-neko';
-    if (avatar.startsWith('data:')) {
-      return <img src={avatar} alt={identity.displayName || fallbackName} className="identity-avatar-img" />;
+    if (typeof avatar === 'string' && avatar.startsWith('data:')) {
+      return (
+        <div className="identity-avatar-thumb">
+          <img
+            src={avatar}
+            alt={identity.displayName || fallbackName}
+            className="identity-avatar-img"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.parentElement?.querySelector('.identity-avatar-svg.fallback');
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+          <div
+            className="identity-avatar-svg fallback"
+            style={{ display: 'none' }}
+            dangerouslySetInnerHTML={{ __html: getAvatarSvg('neon-neko') }}
+          />
+        </div>
+      );
     }
     return (
-      <div
-        className="identity-avatar-svg"
-        dangerouslySetInnerHTML={{ __html: getAvatarSvg(avatar) }}
-      />
+      <div className="identity-avatar-thumb">
+        <div
+          className="identity-avatar-svg"
+          dangerouslySetInnerHTML={{ __html: getAvatarSvg(avatar) }}
+        />
+      </div>
     );
   };
 
@@ -255,6 +283,17 @@ export default function Header({
                 <>
                   <div className="dropdown-divider" />
 
+                  {onOpenEditIdentity && (
+                    <button
+                      type="button"
+                      className="dropdown-item"
+                      onClick={() => { setMenuOpen(false); onOpenEditIdentity(); }}
+                    >
+                      <UserCheck size={16} />
+                      <span>Change Session Identity</span>
+                    </button>
+                  )}
+
                   <button 
                     type="button"
                     className="dropdown-item" 
@@ -302,7 +341,11 @@ export default function Header({
         <div className={`u2u-identity-subbar ${identityHeaderVisible ? 'visible' : 'collapsed'}`}>
           <div className="identity-subbar-inner">
             {/* Self Identity */}
-            <div className="identity-participant self" title="Your anonymous identity for this session">
+            <div
+              className={`identity-participant self ${onOpenEditIdentity ? 'clickable' : ''}`}
+              title="Your anonymous identity for this session (click to edit)"
+              onClick={() => onOpenEditIdentity?.()}
+            >
               {renderAvatarThumb(selfIdentity, 'You')}
               <div className="identity-participant-meta">
                 <span className="identity-participant-name">{selfIdentity.displayName || 'You'}</span>
@@ -319,11 +362,11 @@ export default function Header({
 
             {/* Peer Identity */}
             <div className="identity-participant peer" title="Peer identity in this session">
-              {peerPresent && peerIdentity ? (
+              {peerPresent ? (
                 <>
                   {renderAvatarThumb(peerIdentity, 'Peer')}
                   <div className="identity-participant-meta">
-                    <span className="identity-participant-name">{peerIdentity.displayName || 'Peer'}</span>
+                    <span className="identity-participant-name">{peerIdentity?.displayName || 'Peer'}</span>
                     <span className="identity-participant-role connected">Connected</span>
                   </div>
                 </>

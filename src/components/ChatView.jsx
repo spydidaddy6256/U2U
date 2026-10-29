@@ -119,7 +119,15 @@ export default function ChatView({
   const selfIdentityRef = useRef(selfIdentity);
   useEffect(() => {
     selfIdentityRef.current = selfIdentity;
-  }, [selfIdentity]);
+    if (selfIdentity && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'identity',
+        sessionId,
+        clientId,
+        identity: selfIdentity
+      }));
+    }
+  }, [selfIdentity, sessionId, clientId]);
 
   // Pull-down reveal gesture for Android chat header
   const pullTouchStartYRef = useRef(null);
@@ -301,6 +309,15 @@ export default function ChatView({
           setVoiceTimers({});
         }
 
+        // Synchronize peer identities from room
+        if (data.peerIdentities) {
+          for (const [id, iden] of Object.entries(data.peerIdentities)) {
+            if (id !== clientId && iden) {
+              onPeerIdentityChange?.(iden);
+            }
+          }
+        }
+
         // Accurate presence & removal of transient departure notices
         if (data.participantsCount >= 2) {
           peerPresentRef.current = true;
@@ -401,6 +418,9 @@ export default function ChatView({
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = true;
         setPeerPresent(true);
+        if (data.identity) {
+          onPeerIdentityChange?.(data.identity);
+        }
         // Clear any previous "User left the session" notice when peer is actively back
         setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
         if (!wasPresent) {
@@ -748,7 +768,8 @@ export default function ChatView({
           type: 'join',
           sessionId,
           ticket: authTicketRef.current || authTicket,
-          clientId
+          clientId,
+          identity: selfIdentityRef.current
         }));
         if (selfIdentityRef.current) {
           ws.send(JSON.stringify({

@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import crypto from 'crypto';
+import { spawn } from 'child_process';
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3001';
 const WS_URL = process.env.TEST_WS_URL || 'ws://localhost:3001/ws';
@@ -741,6 +742,130 @@ async function runTests() {
     wsLifeCreatorResumed.close();
     wsLifeCreatorDuplicate.close();
     wsLifeJoiner.close();
+
+    // ----------------------------------------------------
+    // CHECK 12: WEBSOCKET RATE LIMIT HARDENING & SPOOFING RESILIENCE
+    // ----------------------------------------------------
+    console.log('\n--- 12. WEBSOCKET RATE LIMIT HARDENING & SPOOFING RESILIENCE ---');
+
+    // 12.1: Client-supplied X-Forwarded-For: 127.0.0.1 is denied relaxed loopback limit and strictly capped at 30
+    let spoofLoopbackRateLimited = false;
+    for (let i = 1; i <= 32; i++) {
+      const wsSpoofLoop = new WebSocket(WS_URL, {
+        headers: { 'x-forwarded-for': '127.0.0.1' }
+      });
+      await new Promise((resolve) => {
+        wsSpoofLoop.on('open', () => {
+          wsSpoofLoop.close();
+          resolve();
+        });
+        wsSpoofLoop.on('message', (msg) => {
+          const data = JSON.parse(msg.toString());
+          if (data.type === 'error' && data.code === 'RATE_LIMITED') {
+            spoofLoopbackRateLimited = true;
+          }
+        });
+        wsSpoofLoop.on('close', resolve);
+        wsSpoofLoop.on('error', resolve);
+      });
+      if (spoofLoopbackRateLimited) break;
+    }
+    assert(spoofLoopbackRateLimited, 'Client-supplied X-Forwarded-For: 127.0.0.1 is denied relaxed loopback limit and strictly capped at 30');
+
+    // 12.2: Forwarded IP connection attempt is strictly capped at 30 attempts
+    const forwardedIp = `198.51.100.${Math.floor(Math.random() * 200) + 10}`;
+    let forwardedRateLimited = false;
+    for (let i = 1; i <= 32; i++) {
+      const wsForwarded = new WebSocket(WS_URL, {
+        headers: { 'x-forwarded-for': forwardedIp }
+      });
+      await new Promise((resolve) => {
+        wsForwarded.on('open', () => {
+          wsForwarded.close();
+          resolve();
+        });
+        wsForwarded.on('message', (msg) => {
+          const data = JSON.parse(msg.toString());
+          if (data.type === 'error' && data.code === 'RATE_LIMITED') {
+            forwardedRateLimited = true;
+          }
+        });
+        wsForwarded.on('close', resolve);
+        wsForwarded.on('error', resolve);
+      });
+      if (forwardedRateLimited) break;
+    }
+    assert(forwardedRateLimited, 'Forwarded external IP connection is strictly capped at 30 attempts with RATE_LIMITED');
+
+    // 12.3: Production mode (NODE_ENV=production) strictly enforces 30/min limit even on direct loopback
+    const prodPort = '3009';
+    let prodLoopbackRateLimited = false;
+    const prodServer = spawn('node', ['server.js'], {
+      env: { ...process.env, PORT: prodPort, NODE_ENV: 'production' }
+    });
+
+    await new Promise((resolveServer) => {
+      prodServer.stdout.on('data', async (chunk) => {
+        if (chunk.toString().includes(`running on port ${prodPort}`)) {
+          for (let i = 1; i <= 32; i++) {
+            const wsProd = new WebSocket(`ws://localhost:${prodPort}/ws`);
+            await new Promise((resolve) => {
+              wsProd.on('open', () => {
+                wsProd.close();
+                resolve();
+              });
+              wsProd.on('message', (msg) => {
+                const data = JSON.parse(msg.toString());
+                if (data.type === 'error' && data.code === 'RATE_LIMITED') {
+                  prodLoopbackRateLimited = true;
+                }
+              });
+              wsProd.on('close', resolve);
+              wsProd.on('error', resolve);
+            });
+            if (prodLoopbackRateLimited) break;
+          }
+          prodServer.kill();
+          resolveServer();
+        }
+      });
+    });
+    assert(prodLoopbackRateLimited, 'Production mode strictly caps direct loopback connections at 30 attempts per minute');
+
+    // 12.4: Local development mode (NODE_ENV=development) allows genuine loopback connections beyond 30
+    const devPort = '3010';
+    let devLoopbackBlocked = false;
+    const devServer = spawn('node', ['server.js'], {
+      env: { ...process.env, PORT: devPort, NODE_ENV: 'development' }
+    });
+
+    await new Promise((resolveServer) => {
+      devServer.stdout.on('data', async (chunk) => {
+        if (chunk.toString().includes(`running on port ${devPort}`)) {
+          for (let i = 1; i <= 35; i++) {
+            const wsDev = new WebSocket(`ws://localhost:${devPort}/ws`);
+            await new Promise((resolve) => {
+              wsDev.on('open', () => {
+                wsDev.close();
+                resolve();
+              });
+              wsDev.on('message', (msg) => {
+                const data = JSON.parse(msg.toString());
+                if (data.type === 'error' && data.code === 'RATE_LIMITED') {
+                  devLoopbackBlocked = true;
+                }
+              });
+              wsDev.on('close', resolve);
+              wsDev.on('error', resolve);
+            });
+            if (devLoopbackBlocked) break;
+          }
+          devServer.kill();
+          resolveServer();
+        }
+      });
+    });
+    assert(!devLoopbackBlocked, 'Local development mode allows genuine loopback connections beyond 30 (up to 200 limit)');
 
   } catch (err) {
     console.error('Fatal error during test run:', err);

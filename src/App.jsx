@@ -15,6 +15,7 @@ import MobileAppHandoffView from './components/MobileAppHandoffView';
 import CreateProfileModal from './components/modals/CreateProfileModal';
 import UnlockProfileModal from './components/modals/UnlockProfileModal';
 import DeleteProfileModal from './components/modals/DeleteProfileModal';
+import EditIdentityModal from './components/modals/EditIdentityModal';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import CinematicLaunch from './components/CinematicLaunch';
 import { isAndroidPlatform } from './utils/platform';
@@ -93,6 +94,7 @@ export default function App() {
   const [clearChatModalOpen, setClearChatModalOpen] = useState(false);
   const [burnSessionModalOpen, setBurnSessionModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [editIdentityModalOpen, setEditIdentityModalOpen] = useState(false);
   const [joinToken, setJoinToken] = useState('');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
@@ -663,6 +665,7 @@ export default function App() {
           identityHeaderVisible={identityHeaderVisible}
           activeProfile={activeProfile}
           onOpenDeleteProfile={() => setDeleteProfileModalOpen(true)}
+          onOpenEditIdentity={() => setEditIdentityModalOpen(true)}
         />
       )}
 
@@ -810,6 +813,15 @@ export default function App() {
         onClose={() => setDeleteProfileModalOpen(false)}
         activeProfile={activeProfile}
         onProfileDeleted={handleProfileDeleted}
+      />
+      <EditIdentityModal
+        isOpen={editIdentityModalOpen}
+        currentIdentity={selfIdentity}
+        onClose={() => setEditIdentityModalOpen(false)}
+        onConfirmIdentity={(newIdentity) => {
+          setSelfIdentity(newIdentity);
+          addToast('Identity updated');
+        }}
       />
 
       {/* Toasts */}

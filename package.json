@@ -25,6 +25,7 @@
     "@capacitor/status-bar": "^8.0.4",
     "express": "^5.2.1",
     "lucide-react": "^1.50.0",
+    "proxy-addr": "^2.0.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "ws": "^8.22.0"

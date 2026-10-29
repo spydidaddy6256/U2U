@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import proxyaddr from 'proxy-addr';
 import { applyUserReaction } from './src/utils/reactions.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +14,11 @@ const app = express();
 const server = createServer(app);
 
 // Trust proxy for secure IP extraction behind reverse proxies (Render, Cloudflare, etc.)
-app.set('trust proxy', 1);
+// Trust loopback and local private networks by default so public spoofed headers are not trusted
+const trustProxyConfig = process.env.TRUST_PROXY
+  ? (isNaN(Number(process.env.TRUST_PROXY)) ? process.env.TRUST_PROXY : Number(process.env.TRUST_PROXY))
+  : 'loopback, linklocal, uniquelocal';
+app.set('trust proxy', trustProxyConfig);
 
 // Security Headers Middleware
 app.use((req, res, next) => {
@@ -125,9 +130,34 @@ const PHOTO_LIFETIME_MS = 8 * 1000; // Exactly 8 seconds authoritative lifetime 
 const VOICE_NOTE_UNLISTENED_LIFETIME_MS = 180 * 1000; // 3 minutes unplayed
 const VOICE_NOTE_LISTENED_LIFETIME_MS = 60 * 1000; // 60 seconds after full play
 
-// Safe IP helper
+// Normalize IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1 -> 127.0.0.1)
+function normalizeIp(ip) {
+  if (!ip || typeof ip !== 'string') return '127.0.0.1';
+  let clean = ip.trim();
+  if (clean.startsWith('::ffff:')) {
+    clean = clean.slice(7);
+  }
+  return clean;
+}
+
+function isLoopbackIp(ip) {
+  const normalized = normalizeIp(ip);
+  return normalized === '127.0.0.1' || normalized === '::1';
+}
+
+// Safe IP helper supporting both Express Request and WebSocket IncomingMessage
 function getClientIp(req) {
-  return req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  if (req.ip) return normalizeIp(req.ip);
+  const trustFn = app.get('trust proxy fn');
+  if (trustFn) {
+    try {
+      const ip = proxyaddr(req, trustFn);
+      if (ip) return normalizeIp(ip);
+    } catch {
+      // Fallback below
+    }
+  }
+  return normalizeIp(req.socket?.remoteAddress || '127.0.0.1');
 }
 
 // Rate Limiter: Session Creation (max 15 creates per 15 min per IP)
@@ -783,7 +813,7 @@ const wss = new WebSocketServer({
 
 // WebSocket Connection Handling with Differentiated Rate Limiting & BOLA Prevention
 wss.on('connection', (ws, req) => {
-  const clientIp = req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : (req.socket?.remoteAddress || '127.0.0.1');
+  const clientIp = getClientIp(req);
 
   // Track concurrent connections per IP (max 15)
   if (!ipWsConnections.has(clientIp)) {
@@ -801,7 +831,7 @@ wss.on('connection', (ws, req) => {
   }
   currentConns.add(ws);
 
-  // Connection attempts rate limiting per IP (max 30 connects per min)
+  // Connection attempts rate limiting per IP (max 30 connects per min, relaxed to 200 only for genuine loopback in non-production)
   const now = Date.now();
   let attemptRec = ipWsConnectAttempts.get(clientIp);
   if (!attemptRec || now > attemptRec.resetAt) {
@@ -810,7 +840,24 @@ wss.on('connection', (ws, req) => {
     attemptRec.count += 1;
   }
   ipWsConnectAttempts.set(clientIp, attemptRec);
-  if (attemptRec.count > 30) {
+
+  const socketIp = req.socket?.remoteAddress || '';
+  const isPhysicalLoopback = isLoopbackIp(socketIp);
+  const hasForwardedHeader = Boolean(req.headers['x-forwarded-for']);
+  const nodeEnv = (process.env.NODE_ENV || '').toLowerCase().trim();
+  const isProduction = nodeEnv === 'production' || nodeEnv === 'prod';
+
+  // Genuine loopback connection requires:
+  // 1. Not in production (production always strictly enforces 30/min limit)
+  // 2. Physical TCP socket is loopback (127.0.0.1 / ::1)
+  // 3. No forwarded header (never trust client-supplied X-Forwarded-For as proof of localhost)
+  // 4. Resolved client IP is loopback
+  const isGenuineLoopback = !isProduction && isPhysicalLoopback && !hasForwardedHeader && isLoopbackIp(clientIp);
+  const maxAttempts = isGenuineLoopback ? 200 : 30;
+
+  if (attemptRec.count > maxAttempts) {
+    currentConns.delete(ws);
+    if (currentConns.size === 0) ipWsConnections.delete(clientIp);
     ws.send(JSON.stringify({
       type: 'error',
       code: 'RATE_LIMITED',
@@ -1004,6 +1051,17 @@ wss.on('connection', (ws, req) => {
               return m;
             });
 
+          // Register joining client identity if provided
+          if (msg.identity && typeof msg.identity === 'object') {
+            const displayName = typeof msg.identity.displayName === 'string'
+              ? msg.identity.displayName.replace(/<[^>]*>/g, '').trim().slice(0, 24)
+              : 'Anonymous';
+            const avatar = typeof msg.identity.avatar === 'string' ? msg.identity.avatar.slice(0, 2000000) : 'neon-neko';
+            const sanitized = { displayName, avatar };
+            if (!room.identities) room.identities = new Map();
+            room.identities.set(clientId, sanitized);
+          }
+
           // Extract any identities already registered in the room
           const existingIdentities = {};
           if (room.identities) {
@@ -1025,16 +1083,22 @@ wss.on('connection', (ws, req) => {
             peerIdentities: existingIdentities
           }));
 
-          // Notify peer
+          // Notify peer and synchronize presence with identities
           for (const [pId, pWs] of room.participants.entries()) {
             if (pId !== clientId && pWs.readyState === WebSocket.OPEN) {
+              const myIdentity = room.identities?.get(clientId);
+              const peerIdentity = room.identities?.get(pId);
               pWs.send(JSON.stringify({
                 type: 'peer_joined',
-                participantsCount: room.participants.size
+                participantsCount: room.participants.size,
+                senderId: clientId,
+                identity: myIdentity
               }));
               ws.send(JSON.stringify({
                 type: 'peer_present',
-                participantsCount: room.participants.size
+                participantsCount: room.participants.size,
+                senderId: pId,
+                identity: peerIdentity
               }));
             }
           }

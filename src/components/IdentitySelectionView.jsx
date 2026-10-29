@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { RefreshCw, Upload, X, ArrowRight, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Upload, X, ArrowRight, ShieldCheck, Crop } from 'lucide-react';
 import { AVATAR_PRESETS, getAvatarSvg } from '../data/avatars';
 import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName } from '../utils/identity';
 import { playTickSound, playErrorSound } from '../utils/audio';
+import AvatarCropModal from './modals/AvatarCropModal';
 
-const MAX_CUSTOM_IMAGE_SIZE = 1024 * 1024; // 1MB safe limit
+const MAX_CUSTOM_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB raw image size before cropping
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function IdentitySelectionView({
@@ -27,9 +28,15 @@ export default function IdentitySelectionView({
     initialIdentity?.avatar ||
     AVATAR_PRESETS[0].id
   ));
-  const [customAvatarData, setCustomAvatarData] = useState(null);
-  const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'custom'
+  const [customAvatarData, setCustomAvatarData] = useState(() => (
+    initialAvatar?.startsWith('data:') ? initialAvatar : initialIdentity?.avatar?.startsWith('data:') ? initialIdentity.avatar : null
+  ));
+  const [activeTab, setActiveTab] = useState(() => (
+    (initialAvatar?.startsWith('data:') || initialIdentity?.avatar?.startsWith('data:')) ? 'custom' : 'presets'
+  ));
   const [errorMsg, setErrorMsg] = useState('');
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [rawImageForCrop, setRawImageForCrop] = useState('');
   const fileInputRef = useRef(null);
 
   const handleRefreshName = () => {
@@ -56,18 +63,32 @@ export default function IdentitySelectionView({
 
     if (file.size > MAX_CUSTOM_IMAGE_SIZE) {
       playErrorSound();
-      setErrorMsg('Image size must be under 1MB');
+      setErrorMsg('Image size must be under 5MB');
       return;
     }
 
     setErrorMsg('');
     const reader = new FileReader();
     reader.onload = () => {
-      setCustomAvatarData(reader.result);
-      setSelectedAvatarId('custom');
+      setRawImageForCrop(reader.result);
+      setCropperOpen(true);
       playTickSound();
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropConfirm = (croppedDataUrl) => {
+    setCustomAvatarData(croppedDataUrl);
+    setSelectedAvatarId('custom');
+    setCropperOpen(false);
+    playTickSound();
+  };
+
+  const handleCropCancel = () => {
+    setCropperOpen(false);
+    if (!customAvatarData && fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRemoveCustom = () => {
@@ -227,17 +248,30 @@ export default function IdentitySelectionView({
                   <img src={customAvatarData} alt="Uploaded" className="custom-uploaded-thumb" />
                   <div className="custom-uploaded-meta">
                     <span className="custom-uploaded-text">Custom Picture Ready</span>
-                    <span className="custom-uploaded-sub">Stored locally for this session</span>
+                    <span className="custom-uploaded-sub">Cropped & optimized for this session</span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={handleRemoveCustom}
-                    title="Remove custom picture"
-                  >
-                    <X size={14} />
-                    <span>Remove</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setRawImageForCrop(customAvatarData);
+                        setCropperOpen(true);
+                      }}
+                      title="Adjust / re-crop picture"
+                    >
+                      <Crop size={14} />
+                      <span>Crop</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleRemoveCustom}
+                      title="Remove custom picture"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div
@@ -250,8 +284,8 @@ export default function IdentitySelectionView({
                   }}
                 >
                   <Upload size={24} className="upload-icon" />
-                  <span className="upload-title">Click to upload your picture</span>
-                  <span className="upload-desc">JPG, PNG, or WebP · Max 1MB</span>
+                  <span className="upload-title">Click to upload and crop your picture</span>
+                  <span className="upload-desc">JPG, PNG, or WebP</span>
                   <span className="upload-privacy-note">
                     Stored locally in your browser memory for this session. Never saved to public directories.
                   </span>
@@ -289,6 +323,14 @@ export default function IdentitySelectionView({
           </div>
         </form>
       </div>
+
+      {/* Embedded Crop Modal */}
+      <AvatarCropModal
+        isOpen={cropperOpen}
+        imageSrc={rawImageForCrop}
+        onConfirm={handleCropConfirm}
+        onCancel={handleCropCancel}
+      />
     </div>
   );
 }
