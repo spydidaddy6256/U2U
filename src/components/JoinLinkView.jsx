@@ -6,6 +6,7 @@ import { getApiUrl } from '../utils/apiConfig';
 export default function JoinLinkView({
   token,
   clientId,
+  initialPasscode = '',
   onJoinSuccess,
   onCreateClick,
   onGoHome,
@@ -15,6 +16,7 @@ export default function JoinLinkView({
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [passcode, setPasscode] = useState(() => {
+    if (initialPasscode) return initialPasscode.trim();
     try {
       const hash = window.location.hash;
       return hash ? decodeURIComponent(hash.replace(/^#/, '')).trim() : '';

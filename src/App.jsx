@@ -721,6 +721,7 @@ export default function App() {
               <JoinLinkView
                 token={joinToken}
                 clientId={clientId}
+                initialPasscode={handoffPasscode}
                 onJoinSuccess={handleJoinWithLink}
                 onCreateClick={handleStartCreate}
                 onGoHome={() => {
@@ -743,7 +744,10 @@ export default function App() {
             {view === 'identity-select' && (
               <IdentitySelectionView
                 initialIdentity={selfIdentity}
+                initialName={selfIdentity?.displayName}
+                initialAvatar={selfIdentity?.avatar}
                 onConfirm={handleConfirmIdentity}
+                onConfirmIdentity={handleConfirmIdentity}
                 onCancel={handleCancelIdentitySelection}
               />
             )}

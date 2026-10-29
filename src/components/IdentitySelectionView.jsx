@@ -9,13 +9,24 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function IdentitySelectionView({
   onConfirmIdentity,
+  onConfirm,
+  onCancel,
+  initialIdentity,
   initialName = '',
   initialAvatar = '',
   title = 'Choose Your Session Identity',
   subtitle = 'Pick a temporary anonymous name and avatar. No real personal information required.'
 }) {
-  const [displayName, setDisplayName] = useState(() => initialName || generateRandomDisplayName());
-  const [selectedAvatarId, setSelectedAvatarId] = useState(() => initialAvatar || AVATAR_PRESETS[0].id);
+  const [displayName, setDisplayName] = useState(() => (
+    initialName ||
+    initialIdentity?.displayName ||
+    generateRandomDisplayName()
+  ));
+  const [selectedAvatarId, setSelectedAvatarId] = useState(() => (
+    initialAvatar ||
+    initialIdentity?.avatar ||
+    AVATAR_PRESETS[0].id
+  ));
   const [customAvatarData, setCustomAvatarData] = useState(null);
   const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'custom'
   const [errorMsg, setErrorMsg] = useState('');
@@ -77,15 +88,18 @@ export default function IdentitySelectionView({
 
     const finalAvatar = customAvatarData || selectedAvatarId;
     playTickSound();
-    onConfirmIdentity({
-      displayName: clean,
-      avatar: finalAvatar
-    });
+    const confirmFn = onConfirmIdentity || onConfirm;
+    if (typeof confirmFn === 'function') {
+      confirmFn({
+        displayName: clean,
+        avatar: finalAvatar
+      });
+    }
   };
 
   return (
-    <div className="identity-selection-wrapper">
-      <div className="identity-card glass-panel">
+    <div className="identity-selection-wrapper identity-select-view flow-wrapper">
+      <div className="identity-card identity-select-card glass-panel flow-card">
         {/* Header */}
         <div className="identity-header">
           <div className="identity-badge">
@@ -98,8 +112,8 @@ export default function IdentitySelectionView({
 
         <form onSubmit={handleSubmit} className="identity-form">
           {/* Avatar Preview */}
-          <div className="avatar-preview-container">
-            <div className="avatar-preview-ring">
+          <div className="avatar-preview-container identity-preview-badge">
+            <div className="avatar-preview-ring identity-preview-avatar">
               {customAvatarData ? (
                 <img
                   src={customAvatarData}
@@ -123,11 +137,11 @@ export default function IdentitySelectionView({
               <span>Anonymous Display Name</span>
               <span className="char-count">{displayName.length}/24</span>
             </label>
-            <div className="name-input-row">
+            <div className="name-input-row identity-name-input-group">
               <input
                 id="display-name-input"
                 type="text"
-                className="input-field name-input"
+                className="input-field name-input identity-name-input"
                 value={displayName}
                 maxLength={24}
                 onChange={(e) => {
@@ -151,12 +165,12 @@ export default function IdentitySelectionView({
           </div>
 
           {/* Avatar Source Tabs */}
-          <div className="avatar-tabs-row" role="tablist">
+          <div className="avatar-tabs-row avatar-tabs" role="tablist">
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === 'presets'}
-              className={`avatar-tab ${activeTab === 'presets' ? 'active' : ''}`}
+              className={`avatar-tab avatar-tab-btn ${activeTab === 'presets' ? 'active' : ''}`}
               onClick={() => { setActiveTab('presets'); playTickSound(); }}
             >
               Choose an Avatar
@@ -165,7 +179,7 @@ export default function IdentitySelectionView({
               type="button"
               role="tab"
               aria-selected={activeTab === 'custom'}
-              className={`avatar-tab ${activeTab === 'custom' ? 'active' : ''}`}
+              className={`avatar-tab avatar-tab-btn ${activeTab === 'custom' ? 'active' : ''}`}
               onClick={() => { setActiveTab('custom'); playTickSound(); }}
             >
               Use Your Own Picture
@@ -174,7 +188,7 @@ export default function IdentitySelectionView({
 
           {/* Presets Grid */}
           {activeTab === 'presets' && (
-            <div className="avatar-grid" role="radiogroup" aria-label="Avatar options">
+            <div className="avatar-grid avatar-presets-grid" role="radiogroup" aria-label="Avatar options">
               {AVATAR_PRESETS.map((preset) => {
                 const isSelected = selectedAvatarId === preset.id && !customAvatarData;
                 return (
@@ -183,7 +197,7 @@ export default function IdentitySelectionView({
                     type="button"
                     role="radio"
                     aria-checked={isSelected}
-                    className={`avatar-grid-item ${isSelected ? 'selected' : ''}`}
+                    className={`avatar-grid-item avatar-preset-btn ${isSelected ? 'selected' : ''}`}
                     onClick={() => handleSelectPreset(preset.id)}
                     title={preset.name}
                   >
@@ -262,6 +276,16 @@ export default function IdentitySelectionView({
               <span>Continue to Chat</span>
               <ArrowRight size={18} />
             </button>
+            {onCancel && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                onClick={onCancel}
+                style={{ marginTop: '8px', fontSize: '0.86rem', color: 'var(--text-tertiary)' }}
+              >
+                <span>Back</span>
+              </button>
+            )}
           </div>
         </form>
       </div>
