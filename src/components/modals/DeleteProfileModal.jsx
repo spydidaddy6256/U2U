@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Trash2, ShieldAlert, X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { obliterateLocalProfile, deriveAuthProof, unlockStoredProfile } from '../../utils/profileCrypto';
 import { getApiUrl } from '../../utils/apiConfig';
@@ -17,6 +17,30 @@ export default function DeleteProfileModal({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [partialFailure, setPartialFailure] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      // eslint-disable-next-line react/set-state-in-effect
+      setStep(1);
+      setDeleteConfirmationInput('');
+      setPassword('');
+      setLoading(false);
+      setErrorMsg('');
+      setPartialFailure(false);
+    }
+  }, [isOpen]);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -87,8 +111,17 @@ export default function DeleteProfileModal({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-profile-title">
-      <div className="modal-container glass-panel delete-profile-modal">
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-profile-title"
+      onClick={onClose}
+    >
+      <div
+        className="modal-container glass-panel delete-profile-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div className="modal-title-row danger">
             <ShieldAlert size={20} className="modal-title-icon danger" />

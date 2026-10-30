@@ -1,6 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, X, ArrowRight, ShieldCheck } from 'lucide-react';
-import { unlockStoredProfile, isValidRecoveryKeyFormat, deriveProfileId, deriveAuthProof, saveProfileLocally } from '../../utils/profileCrypto';
+import {
+  unlockStoredProfile,
+  isValidRecoveryKeyFormat,
+  deriveProfileId,
+  deriveAuthProof,
+  saveProfileLocally,
+  getStoredProfileMeta,
+  normalizeRecoveryKey
+} from '../../utils/profileCrypto';
 import { sanitizeDisplayName } from '../../utils/identity';
 import { AVATAR_PRESETS } from '../../data/avatars';
 import { getApiUrl } from '../../utils/apiConfig';
@@ -14,7 +22,10 @@ export default function UnlockProfileModal({
   onProfileUnlocked,
   onToast
 }) {
-  const [mode, setMode] = useState(() => (hasStoredProfile ? 'unlock' : 'import'));
+  const effectiveStoredMeta = storedProfileMeta || getStoredProfileMeta();
+  const effectiveHasStored = hasStoredProfile ?? !!effectiveStoredMeta;
+
+  const [mode, setMode] = useState(() => (effectiveHasStored ? 'unlock' : 'import'));
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [importKey, setImportKey] = useState('');
@@ -22,6 +33,33 @@ export default function UnlockProfileModal({
   const [importPassword, setImportPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Sync mode and reset state on opening
+  useEffect(() => {
+    if (isOpen) {
+      // eslint-disable-next-line react/set-state-in-effect
+      setMode(effectiveHasStored ? 'unlock' : 'import');
+      setPassword('');
+      setShowPassword(false);
+      setImportKey('');
+      setImportUsername('');
+      setImportPassword('');
+      setLoading(false);
+      setErrorMsg('');
+    }
+  }, [isOpen, effectiveHasStored]);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -48,7 +86,8 @@ export default function UnlockProfileModal({
   // Restore/Import using recovery key
   const handleImport = async (e) => {
     e.preventDefault();
-    if (!isValidRecoveryKeyFormat(importKey)) {
+    const cleanKey = normalizeRecoveryKey(importKey);
+    if (!isValidRecoveryKeyFormat(cleanKey)) {
       playErrorSound();
       setErrorMsg('Invalid recovery key format. Expected U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX');
       return;
@@ -58,8 +97,8 @@ export default function UnlockProfileModal({
     setErrorMsg('');
 
     try {
-      const derivedId = await deriveProfileId(importKey);
-      const authProof = await deriveAuthProof(importKey, 'AUTH');
+      const derivedId = await deriveProfileId(cleanKey);
+      const authProof = await deriveAuthProof(cleanKey, 'AUTH');
 
       // Check if profile exists on server
       let finalUsername = importUsername.trim() || 'RestoredUser';
@@ -83,7 +122,7 @@ export default function UnlockProfileModal({
         profileId: derivedId,
         username: sanitizeDisplayName(finalUsername),
         avatar: finalAvatar,
-        recoveryKey: importKey,
+        recoveryKey: cleanKey,
         password: importPassword
       });
 
@@ -116,8 +155,17 @@ export default function UnlockProfileModal({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="unlock-profile-title">
-      <div className="modal-container glass-panel unlock-profile-modal">
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unlock-profile-title"
+      onClick={onClose}
+    >
+      <div
+        className="modal-container glass-panel unlock-profile-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div className="modal-title-row">
             <Lock size={20} className="modal-title-icon" />
@@ -130,7 +178,7 @@ export default function UnlockProfileModal({
           </button>
         </div>
 
-        {hasStoredProfile && (
+        {effectiveHasStored && (
           <div className="avatar-tabs-row" role="tablist">
             <button
               type="button"
@@ -150,14 +198,14 @@ export default function UnlockProfileModal({
         )}
 
         {/* UNLOCK MODE */}
-        {mode === 'unlock' && storedProfileMeta && (
+        {mode === 'unlock' && effectiveStoredMeta && (
           <form onSubmit={handleUnlock} className="modal-form-content">
             <div className="profile-identity-chip">
-              <span className="profile-chip-name">{storedProfileMeta.username}</span>
-              <span className="profile-chip-id">{storedProfileMeta.profileId}</span>
+              <span className="profile-chip-name">{effectiveStoredMeta.username}</span>
+              <span className="profile-chip-id">{effectiveStoredMeta.profileId}</span>
             </div>
 
-            {storedProfileMeta.hasPassword ? (
+            {effectiveStoredMeta.hasPassword ? (
               <div className="field-group">
                 <label htmlFor="unlock-pass-input" className="field-label">Profile Password</label>
                 <div className="password-input-row">

@@ -21,7 +21,7 @@ import CinematicLaunch from './components/CinematicLaunch';
 import { isAndroidPlatform } from './utils/platform';
 import { getApiUrl } from './utils/apiConfig';
 import { canAccessWebChat, setDesktopOverride } from './utils/platformRouting';
-import { getActiveProfile, obliterateLocalProfile } from './utils/profileCrypto';
+import { getActiveProfile, getStoredProfileMeta, setActiveProfileSession, obliterateLocalProfile } from './utils/profileCrypto';
 import { generateAnonymousName } from './utils/identity';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -66,6 +66,7 @@ export default function App() {
 
   // Permanent Profile & Identity State
   const [activeProfile, setActiveProfile] = useState(() => getActiveProfile());
+  const [storedProfileMeta, setStoredProfileMeta] = useState(() => getStoredProfileMeta());
   const [selfIdentity, setSelfIdentity] = useState(() => {
     const profile = getActiveProfile();
     if (profile) {
@@ -547,6 +548,8 @@ export default function App() {
   // ── Permanent Profile Handlers ──
   const handleProfileCreated = (profile) => {
     setActiveProfile(profile);
+    setActiveProfileSession(profile);
+    setStoredProfileMeta(getStoredProfileMeta());
     setSelfIdentity({
       displayName: profile.username,
       avatar: profile.avatar,
@@ -558,6 +561,8 @@ export default function App() {
 
   const handleProfileUnlocked = (profile) => {
     setActiveProfile(profile);
+    setActiveProfileSession(profile);
+    setStoredProfileMeta(getStoredProfileMeta());
     setSelfIdentity({
       displayName: profile.username,
       avatar: profile.avatar,
@@ -570,6 +575,7 @@ export default function App() {
   const handleProfileDeleted = () => {
     obliterateLocalProfile();
     setActiveProfile(null);
+    setStoredProfileMeta(null);
     setSelfIdentity({
       displayName: generateAnonymousName(),
       avatar: 'neon-neko'
@@ -693,9 +699,12 @@ export default function App() {
                 onOpenSecurity={() => setSecurityModalOpen(true)}
                 onOpenTerms={() => setView('terms')}
                 onOpenPrivacy={() => setView('privacy')}
+                onCreateProfileClick={() => setCreateProfileModalOpen(true)}
                 onOpenCreateProfile={() => setCreateProfileModalOpen(true)}
+                onUnlockProfileClick={() => setUnlockProfileModalOpen(true)}
                 onOpenUnlockProfile={() => setUnlockProfileModalOpen(true)}
                 activeProfile={activeProfile}
+                storedProfileMeta={storedProfileMeta}
                 onToast={addToast}
                 isCreating={isCreatingSession}
               />
@@ -802,17 +811,22 @@ export default function App() {
         isOpen={createProfileModalOpen}
         onClose={() => setCreateProfileModalOpen(false)}
         onProfileCreated={handleProfileCreated}
+        onToast={addToast}
       />
       <UnlockProfileModal
         isOpen={unlockProfileModalOpen}
         onClose={() => setUnlockProfileModalOpen(false)}
+        hasStoredProfile={!!storedProfileMeta}
+        storedProfileMeta={storedProfileMeta}
         onProfileUnlocked={handleProfileUnlocked}
+        onToast={addToast}
       />
       <DeleteProfileModal
         isOpen={deleteProfileModalOpen}
         onClose={() => setDeleteProfileModalOpen(false)}
         activeProfile={activeProfile}
         onProfileDeleted={handleProfileDeleted}
+        onToast={addToast}
       />
       <EditIdentityModal
         isOpen={editIdentityModalOpen}

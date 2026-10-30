@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Copy, Check, KeyRound, ArrowRight, ArrowLeft, AlertTriangle, Eye, EyeOff, X } from 'lucide-react';
 import { AVATAR_PRESETS } from '../../data/avatars';
 import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName } from '../../utils/identity';
-import { generateMasterRecoveryKey, deriveProfileId, deriveAuthProof, saveProfileLocally } from '../../utils/profileCrypto';
+import { generateMasterRecoveryKey, deriveProfileId, deriveAuthProof, saveProfileLocally, normalizeRecoveryKey } from '../../utils/profileCrypto';
 import { getApiUrl } from '../../utils/apiConfig';
 import { playTickSound, playErrorSound, playConnectedSound } from '../../utils/audio';
 
@@ -25,6 +25,38 @@ export default function CreateProfileModal({
   const [confirmKeyInput, setConfirmKeyInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Reset wizard on opening
+  useEffect(() => {
+    if (isOpen) {
+      // eslint-disable-next-line react/set-state-in-effect
+      setStep(1);
+      setUsername(generateRandomDisplayName());
+      setSelectedAvatarId(AVATAR_PRESETS[0].id);
+      setRecoveryKey('');
+      setProfileId('');
+      setPassword('');
+      setConfirmPassword('');
+      setShowPassword(false);
+      setEnablePassword(false);
+      setCopiedKey(false);
+      setConfirmKeyInput('');
+      setLoading(false);
+      setErrorMsg('');
+    }
+  }, [isOpen]);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -86,8 +118,8 @@ export default function CreateProfileModal({
 
   // Finalize Creation
   const handleFinalize = async () => {
-    const cleanInput = confirmKeyInput.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
-    const cleanActual = recoveryKey.trim().toUpperCase();
+    const cleanInput = normalizeRecoveryKey(confirmKeyInput);
+    const cleanActual = normalizeRecoveryKey(recoveryKey);
 
     if (cleanInput !== cleanActual) {
       playErrorSound();
@@ -146,8 +178,17 @@ export default function CreateProfileModal({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-profile-title">
-      <div className="modal-container glass-panel create-profile-modal">
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-profile-title"
+      onClick={onClose}
+    >
+      <div
+        className="modal-container glass-panel create-profile-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="modal-header">
           <div className="modal-title-row">
@@ -189,7 +230,14 @@ export default function CreateProfileModal({
                   setUsername(e.target.value);
                   setErrorMsg('');
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleProceedToKey();
+                  }
+                }}
                 placeholder="e.g. VelvetFox"
+                autoFocus
               />
             </div>
 
@@ -299,6 +347,12 @@ export default function CreateProfileModal({
                       className="input-field"
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); setErrorMsg(''); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleProceedToVerify();
+                        }
+                      }}
                       placeholder="Enter a strong password"
                     />
                     <button
@@ -319,6 +373,12 @@ export default function CreateProfileModal({
                     className="input-field"
                     value={confirmPassword}
                     onChange={(e) => { setConfirmPassword(e.target.value); setErrorMsg(''); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleProceedToVerify();
+                      }
+                    }}
                     placeholder="Repeat your password"
                   />
                 </div>
@@ -362,7 +422,14 @@ export default function CreateProfileModal({
                   setConfirmKeyInput(e.target.value);
                   setErrorMsg('');
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleFinalize();
+                  }
+                }}
                 placeholder="Paste U2U-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                autoFocus
               />
             </div>
 

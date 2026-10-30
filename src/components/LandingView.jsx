@@ -25,6 +25,7 @@ import {
 import { playTickSound, playErrorSound } from '../utils/audio';
 import { canAccessWebChat } from '../utils/platformRouting';
 import { isAndroidPlatform, isSupportedMobilePlatform } from '../utils/platform';
+import { getStoredProfileMeta } from '../utils/profileCrypto';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -32,7 +33,9 @@ export default function LandingView({
   onCreateClick,
   onJoinClick,
   onCreateProfileClick,
+  onOpenCreateProfile,
   onUnlockProfileClick,
+  onOpenUnlockProfile,
   onOpenSecurity,
   onOpenTerms,
   onOpenPrivacy,
@@ -42,6 +45,9 @@ export default function LandingView({
   onToast,
   isCreating = false
 }) {
+  const effectiveStoredMeta = storedProfileMeta || getStoredProfileMeta();
+  const handleCreateProfile = onCreateProfileClick || onOpenCreateProfile;
+  const handleUnlockProfile = onUnlockProfileClick || onOpenUnlockProfile;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsWarning, setTermsWarning] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState(null);
@@ -49,7 +55,7 @@ export default function LandingView({
 
   const isMobile = isSupportedMobilePlatform() || isAndroidPlatform();
 
-  const handleActionWithTerms = (actionFn) => {
+  const handleActionWithTerms = (actionFn, requiresWebChat = false) => {
     if (!termsAccepted) {
       setTermsWarning(true);
       playErrorSound();
@@ -59,8 +65,8 @@ export default function LandingView({
     }
     if (isCreating) return;
 
-    // Check desktop vs mobile browser restriction
-    if (isMobile && !canAccessWebChat()) {
+    // Check desktop vs mobile browser restriction only for web chat session creation / joining
+    if (requiresWebChat && isMobile && !canAccessWebChat()) {
       playTickSound();
       if (onOpenAndroidGuidance) {
         onOpenAndroidGuidance();
@@ -318,7 +324,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card primary-launcher"
-              onClick={() => handleActionWithTerms(onCreateClick)}
+              onClick={() => handleActionWithTerms(onCreateClick, true)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -338,7 +344,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card"
-              onClick={() => handleActionWithTerms(onJoinClick)}
+              onClick={() => handleActionWithTerms(onJoinClick, true)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -356,7 +362,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card"
-              onClick={() => handleActionWithTerms(onCreateProfileClick)}
+              onClick={() => handleActionWithTerms(handleCreateProfile, false)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -374,7 +380,7 @@ export default function LandingView({
             <button
               type="button"
               className="launcher-card"
-              onClick={() => handleActionWithTerms(onUnlockProfileClick)}
+              onClick={() => handleActionWithTerms(handleUnlockProfile, false)}
               disabled={isCreating}
             >
               <div className="launcher-icon-wrap">
@@ -382,10 +388,10 @@ export default function LandingView({
               </div>
               <div className="launcher-card-body">
                 <span className="launcher-card-title">
-                  {storedProfileMeta ? 'Unlock Saved Profile' : 'I Have a Profile'}
+                  {effectiveStoredMeta ? 'Unlock Saved Profile' : 'I Have a Profile'}
                 </span>
                 <span className="launcher-card-sub">
-                  {storedProfileMeta ? `Saved: ${storedProfileMeta.username}` : 'Import from 256-bit recovery key'}
+                  {effectiveStoredMeta ? `Saved: ${effectiveStoredMeta.username}` : 'Import from 256-bit recovery key'}
                 </span>
               </div>
             </button>
