@@ -547,9 +547,91 @@ button:active {
 
 .header-menu-container {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+/* ── Top-Right Menu Trigger Button ── */
+.header-hamburger-btn {
+  background: var(--glass-bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--glass-highlight-subtle);
+  cursor: pointer;
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  transition: background var(--duration-micro) var(--ease-natural),
+              border-color var(--duration-micro) var(--ease-natural),
+              color var(--duration-micro) var(--ease-natural),
+              box-shadow var(--duration-micro) var(--ease-natural),
+              transform var(--duration-micro) var(--ease-natural);
+}
+
+.header-hamburger-btn .header-hamburger-icon,
+.header-hamburger-btn svg {
+  color: var(--text-primary);
+  stroke: currentColor;
+  stroke-width: 2.2px;
+  display: block;
+  flex-shrink: 0;
+  opacity: 1;
+  visibility: visible;
+  transition: color var(--duration-micro) var(--ease-natural),
+              transform var(--duration-micro) var(--ease-natural);
+}
+
+.header-hamburger-btn:hover {
+  color: #ffffff;
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-hover);
+  box-shadow: var(--glass-shadow-sm), var(--glass-highlight);
+  transform: translateY(-1px);
+}
+
+.header-hamburger-btn:hover .header-hamburger-icon,
+.header-hamburger-btn:hover svg {
+  color: #ffffff;
+}
+
+.header-hamburger-btn:active,
+.header-hamburger-btn.active {
+  background: var(--glass-bg-active);
+  border-color: var(--glass-border-hover);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px var(--glass-border-hover), var(--glass-shadow-sm);
+  transform: translateY(0);
+}
+
+.header-hamburger-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Header Quick Action: Sound toggle visual parity */
+.header-quick-btn {
+  background: var(--glass-bg-subtle);
+  border: 1px solid var(--glass-border-light);
+  color: var(--text-secondary);
+}
+
+.header-quick-btn:hover {
+  background: var(--glass-bg-elevated);
+  border-color: var(--glass-border);
+  color: var(--text-primary);
+}
+
+.header-quick-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .icon-btn {

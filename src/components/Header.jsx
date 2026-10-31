@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  Menu,
   ShieldCheck,
   Volume2,
   VolumeX,
@@ -61,6 +62,17 @@ export default function Header({
     document.addEventListener('pointerdown', handleClickOutside);
     return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, []);
+  // Close dropdown on Escape key
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === 'Escape' && menuOpen) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [menuOpen]);
+
 
   // Expiration countdown
   useEffect(() => {
@@ -200,8 +212,8 @@ export default function Header({
           </div>
         )}
 
-        {/* Right Corner Controls: 3-line hamburger menu */}
-        <div className="u2u-header-actions" ref={menuRef}>
+        {/* Right Corner Controls: Settings & Session options */}
+        <div className="u2u-header-actions">
           {/* Direct Sound toggle for instant convenience */}
           <button 
             className="icon-btn header-quick-btn" 
@@ -212,30 +224,28 @@ export default function Header({
             {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
 
-          {/* Three-line hamburger menu button */}
-          <button
-            type="button"
-            className={`icon-btn header-hamburger-btn ${menuOpen ? 'active' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen(!menuOpen);
-              playTickSound();
-            }}
-            title="Session options & settings"
-            aria-label="Session menu"
-            aria-haspopup="true"
-            aria-expanded={menuOpen}
-          >
-            <div className="hamburger-lines">
-              <span />
-              <span />
-              <span />
-            </div>
-          </button>
+          {/* Anchored Menu Container */}
+          <div className="header-menu-container" ref={menuRef}>
+            {/* Top-right menu trigger button */}
+            <button
+              type="button"
+              className={`icon-btn header-hamburger-btn ${menuOpen ? 'active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+                playTickSound();
+              }}
+              title="Session options & settings"
+              aria-label="Session menu"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+            >
+              <Menu size={18} strokeWidth={2.2} className="header-hamburger-icon" />
+            </button>
 
-          {/* Slide-out / Dropdown Menu */}
-          {menuOpen && (
-            <div className="dropdown-menu glass-panel">
+            {/* Slide-out / Dropdown Menu */}
+            {menuOpen && (
+              <div className="dropdown-menu glass-panel" role="menu">
               {/* Security info */}
               <button 
                 type="button"
@@ -333,6 +343,7 @@ export default function Header({
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
 

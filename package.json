@@ -12,11 +12,12 @@
     "test:web": "node test/security.test.mjs",
     "test:android": "node test/android-security.test.mjs",
     "test:upgrade": "node test/product-upgrade.test.mjs",
-    "test": "node test/android-security.test.mjs && node test/security.test.mjs && node test/product-upgrade.test.mjs",
+    "test": "node test/header-menu.test.mjs && node test/android-security.test.mjs && node test/security.test.mjs && node test/product-upgrade.test.mjs",
     "preview": "vite preview",
     "cap:sync": "npm run build && cap sync android",
     "cap:build": "npm run cap:sync && cd android && gradlew assembleDebug",
-    "cap:open": "cap open android"
+    "cap:open": "cap open android",
+    "test:menu": "node test/header-menu.test.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",
