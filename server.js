@@ -52,6 +52,7 @@ app.use((req, res, next) => {
 
 // JSON Body Parser with strict limit
 app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ type: 'text/plain', limit: '1mb' }));
 
 // Safe JSON parse & payload size error handler (Prevents leaking stack traces or HTML errors)
 app.use((err, req, res, next) => {
@@ -129,6 +130,9 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PHOTO_LIFETIME_MS = 8 * 1000; // Exactly 8 seconds authoritative lifetime once opened
 const VOICE_NOTE_UNLISTENED_LIFETIME_MS = 180 * 1000; // 3 minutes unplayed
 const VOICE_NOTE_LISTENED_LIFETIME_MS = 60 * 1000; // 60 seconds after full play
+const RECONNECT_GRACE_PERIOD_MS = process.env.RECONNECT_GRACE_PERIOD_MS
+  ? parseInt(process.env.RECONNECT_GRACE_PERIOD_MS, 10)
+  : 30 * 1000; // 30 seconds reconnection grace period for temporary interruptions
 
 // Normalize IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1 -> 127.0.0.1)
 function normalizeIp(ip) {
@@ -549,13 +553,15 @@ app.post('/api/session/create', checkMaintenance, (req, res) => {
     expiresAt: now + SESSION_TTL_MS,
     burned: false,
     participants: new Map(),
+    participantHistory: new Set(),
     messages: [],
     photoTimers: new Map(),
     voiceTimers: new Map(),
     disconnectTimers: new Map(),
     peerLeftStatus: null,
     leftClientIds: new Set(),
-    deletedMessageIds: new Set()
+    deletedMessageIds: new Set(),
+    hadTwoParticipants: false
   };
 
   rooms.set(cleanSessionId, room);
@@ -607,21 +613,49 @@ app.post('/api/session/auth', checkMaintenance, (req, res) => {
     });
   }
 
+  // If client already left this session, deny re-entry
+  if (room.leftClientIds?.has(clientId)) {
+    return res.status(403).json({
+      error: 'SESSION_LEFT',
+      message: 'You have left this session. Re-entry is not permitted.'
+    });
+  }
+
+  // If session has already ended (peer departed) and this is not an existing remaining participant
+  if (room.peerLeftStatus && (!clientId || !room.participantHistory?.has(clientId))) {
+    return res.status(403).json({
+      error: 'SESSION_TERMINATED',
+      message: 'This session has ended.'
+    });
+  }
+
   // Check 2-participant limit
-  const isReconnecting = clientId && room.participants.has(clientId);
+  const isReconnecting = clientId && (room.participants.has(clientId) || room.participantHistory?.has(clientId));
   if (!isReconnecting && room.participants.size >= 2) {
     return res.status(403).json({
       error: 'This session is full. Exactly two participants are permitted.'
     });
   }
 
+  if (clientId) {
+    if (!room.participantHistory) room.participantHistory = new Set();
+    room.participantHistory.add(clientId);
+  }
+
   // Invalidate join token once second participant joins
-  if (!isReconnecting && room.participants.size === 1) {
+  if (!isReconnecting && (room.participants.size === 1 || room.participantHistory?.size >= 2)) {
+    room.hadTwoParticipants = true;
     room.joinTokenUsed = true;
     if (room.joinToken) {
       joinTokens.delete(room.joinToken);
       usedTokens.set(room.joinToken, cleanSessionId);
     }
+  }
+
+  // Cancel disconnect timer on successful auth reconnect
+  if (room.disconnectTimers?.has(clientId)) {
+    clearTimeout(room.disconnectTimers.get(clientId));
+    room.disconnectTimers.delete(clientId);
   }
 
   clearFailedAuth(rateLimitKey);
@@ -640,6 +674,60 @@ app.post('/api/session/auth', checkMaintenance, (req, res) => {
     participantsCount: room.participants.size,
     ticket
   });
+});
+
+// API: Intentional Session Leave (Page Unload Beacon / Explicit Leave)
+app.post('/api/session/leave', (req, res) => {
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch {}
+  }
+  const sessionId = body?.sessionId;
+  const clientId = body?.clientId;
+
+  if (!sessionId || !clientId || typeof sessionId !== 'string' || typeof clientId !== 'string') {
+    return res.status(400).json({ error: 'Session ID and Client ID required' });
+  }
+
+  const cleanId = sessionId.trim().toUpperCase();
+  const room = rooms.get(cleanId);
+  if (room) {
+    if (room.disconnectTimers?.has(clientId)) {
+      clearTimeout(room.disconnectTimers.get(clientId));
+      room.disconnectTimers.delete(clientId);
+    }
+
+    const pWs = room.participants.get(clientId);
+    if (pWs) {
+      pWs.isIntentionalLeave = true;
+      room.participants.delete(clientId);
+      try { pWs.close(1001, 'Going Away'); } catch {}
+    }
+
+    if (!room.leftClientIds) room.leftClientIds = new Set();
+    room.leftClientIds.add(clientId);
+
+    if (!room.peerLeftStatus) {
+      const leaveTimestamp = Date.now();
+      room.peerLeftStatus = {
+        text: 'User left the session',
+        timestamp: leaveTimestamp,
+        departedClientId: clientId
+      };
+
+      for (const clientWs of room.participants.values()) {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({
+            type: 'peer_left_permanent',
+            text: 'User left the session',
+            timestamp: leaveTimestamp
+          }));
+        }
+      }
+    }
+  }
+
+  return res.json({ success: true });
 });
 
 // API 3: Verify Join Token Status
@@ -964,14 +1052,25 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({
               type: 'error',
               code: 'SESSION_LEFT',
-              message: 'You have left this session.'
+              message: 'You have left this session. Re-entry is not permitted.'
+            }));
+            ws.close();
+            return;
+          }
+
+          // If session has already ended (peer departed) and this is not an existing remaining participant
+          if (room.peerLeftStatus && (!clientId || !room.participantHistory?.has(clientId))) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_TERMINATED',
+              message: 'This session has ended.'
             }));
             ws.close();
             return;
           }
 
           // Strict 2-participant limit
-          const isReconnecting = room.participants.has(clientId);
+          const isReconnecting = clientId && (room.participants.has(clientId) || room.participantHistory?.has(clientId));
           if (!isReconnecting && room.participants.size >= 2) {
             ws.send(JSON.stringify({
               type: 'error',
@@ -986,6 +1085,13 @@ wss.on('connection', (ws, req) => {
           isAuthenticated = true;
           currentSessionId = cleanId;
           currentClientId = clientId;
+
+          if (!room.participantHistory) room.participantHistory = new Set();
+          room.participantHistory.add(clientId);
+
+          if (room.participants.size >= 1 || room.participantHistory.size >= 2) {
+            room.hadTwoParticipants = true;
+          }
 
           // Issue rolling reconnect ticket (1-hour window, capped at room expiry)
           const reconnectTicket = crypto.randomBytes(24).toString('hex');
@@ -1145,6 +1251,16 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (!room) return;
+
+          // Reject message if participant left or session has departed
+          if (room.peerLeftStatus || (room.leftClientIds && room.leftClientIds.size > 0) || room.leftClientIds?.has(currentClientId)) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_TERMINATED',
+              message: 'User has left the session. No further messages can be sent.'
+            }));
+            return;
+          }
 
           const { envelope } = msg;
           if (!envelope || typeof envelope !== 'object' || !envelope.id || !envelope.ciphertext || !envelope.iv) {
@@ -1506,6 +1622,7 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (room) {
+            ws.isIntentionalLeave = true;
             if (room.disconnectTimers?.has(currentClientId)) {
               clearTimeout(room.disconnectTimers.get(currentClientId));
               room.disconnectTimers.delete(currentClientId);
@@ -1515,19 +1632,23 @@ wss.on('connection', (ws, req) => {
             if (!room.leftClientIds) room.leftClientIds = new Set();
             room.leftClientIds.add(currentClientId);
 
-            const leaveTimestamp = Date.now();
-            room.peerLeftStatus = {
-              text: 'User left the session',
-              timestamp: leaveTimestamp
-            };
+            // Deduplicate: Only set peerLeftStatus and broadcast if not already set
+            if (!room.peerLeftStatus) {
+              const leaveTimestamp = Date.now();
+              room.peerLeftStatus = {
+                text: 'User left the session',
+                timestamp: leaveTimestamp,
+                departedClientId: currentClientId
+              };
 
-            for (const pWs of room.participants.values()) {
-              if (pWs.readyState === WebSocket.OPEN) {
-                pWs.send(JSON.stringify({
-                  type: 'peer_left_permanent',
-                  text: 'User left the session',
-                  timestamp: leaveTimestamp
-                }));
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left_permanent',
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp
+                  }));
+                }
               }
             }
           }
@@ -1592,7 +1713,7 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
     // Remove from IP tracking
     const conns = ipWsConnections.get(clientIp);
     if (conns) {
@@ -1615,13 +1736,98 @@ wss.on('connection', (ws, req) => {
 
         room.participants.delete(currentClientId);
 
-        // Notify remaining participants of temporary disconnect (presence becomes waiting/offline)
-        for (const pWs of room.participants.values()) {
-          if (pWs.readyState === WebSocket.OPEN) {
-            pWs.send(JSON.stringify({
-              type: 'peer_left',
-              participantsCount: room.participants.size
-            }));
+        if (!room.leftClientIds) room.leftClientIds = new Set();
+
+        const isTwoParticipantSession = room.hadTwoParticipants || room.participantHistory?.size >= 2;
+
+        if (isTwoParticipantSession) {
+          const isIntentional = ws.isIntentionalLeave || code === 1001;
+
+          if (isIntentional) {
+            // Actual page reload, tab close, or intentional leave:
+            // Clear any pending disconnect timer for this client
+            if (room.disconnectTimers?.has(currentClientId)) {
+              clearTimeout(room.disconnectTimers.get(currentClientId));
+              room.disconnectTimers.delete(currentClientId);
+            }
+
+            // If departure has not been marked yet, this participant disconnecting is the authoritative departure
+            if (!room.peerLeftStatus) {
+              room.leftClientIds.add(currentClientId);
+              const leaveTimestamp = Date.now();
+              room.peerLeftStatus = {
+                text: 'User left the session',
+                timestamp: leaveTimestamp,
+                departedClientId: currentClientId
+              };
+
+              // Authoritatively notify remaining participants of permanent departure immediately
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left_permanent',
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp
+                  }));
+                }
+              }
+            }
+          } else {
+            // Temporary network interruption (e.g. Wi-Fi drop, brief TCP reset):
+            // Allow 30-second reconnection grace period without immediate permanent departure
+            if (!room.peerLeftStatus && !room.leftClientIds.has(currentClientId)) {
+              if (room.disconnectTimers?.has(currentClientId)) {
+                clearTimeout(room.disconnectTimers.get(currentClientId));
+              }
+
+              const timer = setTimeout(() => {
+                room.disconnectTimers.delete(currentClientId);
+                // Grace period elapsed without reconnection: authoritatively mark permanent departure
+                if (!room.peerLeftStatus && !room.leftClientIds.has(currentClientId)) {
+                  room.leftClientIds.add(currentClientId);
+                  const leaveTimestamp = Date.now();
+                  room.peerLeftStatus = {
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp,
+                    departedClientId: currentClientId
+                  };
+
+                  for (const pWs of room.participants.values()) {
+                    if (pWs.readyState === WebSocket.OPEN) {
+                      pWs.send(JSON.stringify({
+                        type: 'peer_left_permanent',
+                        text: 'User left the session',
+                        timestamp: leaveTimestamp
+                      }));
+                    }
+                  }
+                }
+              }, RECONNECT_GRACE_PERIOD_MS);
+
+              room.disconnectTimers.set(currentClientId, timer);
+
+              // Notify remaining participants of temporary disconnect (presence offline/waiting)
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left',
+                    participantsCount: room.participants.size,
+                    temporary: true,
+                    gracePeriodMs: RECONNECT_GRACE_PERIOD_MS
+                  }));
+                }
+              }
+            }
+          }
+        } else {
+          // Creator waiting alone or 1 participant before peer joined
+          for (const pWs of room.participants.values()) {
+            if (pWs.readyState === WebSocket.OPEN) {
+              pWs.send(JSON.stringify({
+                type: 'peer_left',
+                participantsCount: room.participants.size
+              }));
+            }
           }
         }
       }

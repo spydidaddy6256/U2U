@@ -342,7 +342,7 @@ export default function App() {
     leaveModalOpen
   ]);
 
-  // Route detection: Listen for /join/:token in URL
+  // Route detection & reload session restoration
   useEffect(() => {
     const handleUrlRoute = () => {
       const path = window.location.pathname;
@@ -358,13 +358,54 @@ export default function App() {
           setJoinToken(match[1]);
           setView('join-link');
         }
+      } else {
+        // Restore active session for remaining participant across reloads
+        try {
+          const raw = sessionStorage.getItem('u2u-active-session');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.sessionId && parsed.passcode && parsed.expiresAt && Date.now() < parsed.expiresAt) {
+              (async () => {
+                try {
+                  const pcHash = await hashPasscode(parsed.passcode, parsed.sessionId);
+                  const res = await fetch(getApiUrl('/api/session/auth'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: parsed.sessionId, passcodeHash: pcHash, clientId })
+                  });
+                  const data = await res.json();
+                  if (res.ok && data.ticket) {
+                    setSessionId(parsed.sessionId);
+                    setPasscode(parsed.passcode);
+                    setExpiresAt(data.expiresAt || parsed.expiresAt);
+                    setAuthTicket(data.ticket);
+                    const key = await deriveKey(parsed.passcode, parsed.sessionId);
+                    setCryptoKey(key);
+                    setView('chat');
+                  } else {
+                    try { sessionStorage.removeItem('u2u-active-session'); } catch {}
+                    if (data?.error === 'SESSION_LEFT') {
+                      addToast('You have left this session. Re-entry is not permitted.');
+                    }
+                  }
+                } catch {
+                  try { sessionStorage.removeItem('u2u-active-session'); } catch {}
+                }
+              })();
+            } else {
+              try { sessionStorage.removeItem('u2u-active-session'); } catch {}
+            }
+          }
+        } catch {
+          try { sessionStorage.removeItem('u2u-active-session'); } catch {}
+        }
       }
     };
 
     handleUrlRoute();
     window.addEventListener('popstate', handleUrlRoute);
     return () => window.removeEventListener('popstate', handleUrlRoute);
-  }, []);
+  }, [clientId]);
 
   // ── Create Session (Server-Authoritative & Zero-Knowledge) ──
   const handleStartCreate = async () => {
@@ -534,6 +575,14 @@ export default function App() {
     setIdentityHeaderVisible(true);
     playConnectedSound();
     setView('chat');
+    try {
+      sessionStorage.setItem('u2u-active-session', JSON.stringify({
+        sessionId,
+        passcode,
+        expiresAt,
+        clientId
+      }));
+    } catch {}
     addToast('Connected securely');
   };
 
@@ -612,6 +661,9 @@ export default function App() {
     setPeerIdentity(null);
     setIdentityHeaderVisible(true);
     setChatHeaderVisible(true);
+    try {
+      sessionStorage.removeItem('u2u-active-session');
+    } catch {}
     try {
       if (window.location.pathname !== '/') {
         const search = window.location.search;

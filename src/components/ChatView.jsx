@@ -24,7 +24,7 @@ import {
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
 import { isAndroidPlatform } from '../utils/platform';
-import { getWsUrl } from '../utils/apiConfig';
+import { getWsUrl, getApiUrl } from '../utils/apiConfig';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
@@ -104,6 +104,43 @@ export default function ChatView({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionPickerTarget, setReactionPickerTarget] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [peerLeftPermanently, setPeerLeftPermanently] = useState(false);
+  const peerLeftPermanentlyRef = useRef(false);
+  useEffect(() => {
+    peerLeftPermanentlyRef.current = peerLeftPermanently;
+  }, [peerLeftPermanently]);
+
+  // Handle browser lifecycle events (pagehide, beforeunload)
+  useEffect(() => {
+    const handlePageUnload = () => {
+      // If the peer has already permanently left, this client is Participant B reloading
+      // Do NOT send leave_session or clear session storage
+      if (peerLeftPermanentlyRef.current) {
+        return;
+      }
+
+      // If both participants were present (or we are in active session), this client is leaving
+      try {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({ type: 'leave_session' }));
+          socketRef.current.close(1001, 'Going Away');
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          const blob = new Blob([JSON.stringify({ sessionId, clientId })], { type: 'application/json' });
+          navigator.sendBeacon(getApiUrl('/api/session/leave'), blob);
+        }
+        sessionStorage.removeItem('u2u-active-session');
+      } catch {}
+    };
+
+    window.addEventListener('pagehide', handlePageUnload);
+    window.addEventListener('beforeunload', handlePageUnload);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageUnload);
+      window.removeEventListener('beforeunload', handlePageUnload);
+    };
+  }, [sessionId, clientId]);
 
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -319,7 +356,7 @@ export default function ChatView({
         }
 
         // Accurate presence & removal of transient departure notices
-        if (data.participantsCount >= 2) {
+        if (data.participantsCount >= 2 && !data.peerLeftStatus) {
           peerPresentRef.current = true;
           setPeerPresent(true);
           setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
@@ -331,6 +368,8 @@ export default function ChatView({
 
         // Authoritative permanent participant-left status only if peer intentionally left and isn't present
         if (data.peerLeftStatus && data.participantsCount < 2) {
+          peerLeftPermanentlyRef.current = true;
+          setPeerLeftPermanently(true);
           const text = data.peerLeftStatus.text || 'User left the session';
           const timestamp = data.peerLeftStatus.timestamp || Date.now();
           setSystemMessages(prev => {
@@ -415,6 +454,7 @@ export default function ChatView({
 
       case 'peer_joined':
       case 'peer_present': {
+        if (peerLeftPermanentlyRef.current) break;
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = true;
         setPeerPresent(true);
@@ -434,8 +474,23 @@ export default function ChatView({
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
         setPeerPresent(false);
-        if (wasPresent) {
-          playUserLeftSound();
+        if (data.permanent || data.peerLeftStatus) {
+          const alreadyLeft = peerLeftPermanentlyRef.current;
+          peerLeftPermanentlyRef.current = true;
+          setPeerLeftPermanently(true);
+          const text = (data.peerLeftStatus && data.peerLeftStatus.text) || data.text || 'User left the session';
+          const timestamp = (data.peerLeftStatus && data.peerLeftStatus.timestamp) || data.timestamp || Date.now();
+          setSystemMessages(prev => {
+            if (prev.some(m => m.text === text)) return prev;
+            return [...prev, { id: 'peer-left-' + timestamp, text, timestamp }];
+          });
+          if (wasPresent && !alreadyLeft) {
+            playUserLeftSound();
+          }
+        } else {
+          if (wasPresent && !peerLeftPermanentlyRef.current) {
+            playUserLeftSound();
+          }
         }
         break;
       }
@@ -443,8 +498,11 @@ export default function ChatView({
       case 'peer_left_permanent':
       case 'peer_left_intentional': {
         const wasPresent = peerPresentRef.current;
+        const alreadyLeft = peerLeftPermanentlyRef.current;
         peerPresentRef.current = false;
         setPeerPresent(false);
+        peerLeftPermanentlyRef.current = true;
+        setPeerLeftPermanently(true);
         const text = data.text || 'User left the session';
         const timestamp = data.timestamp || Date.now();
         setSystemMessages(prev => {
@@ -455,7 +513,7 @@ export default function ChatView({
             timestamp
           }];
         });
-        if (wasPresent) {
+        if (wasPresent && !alreadyLeft) {
           playUserLeftSound();
         }
         break;
@@ -1013,6 +1071,10 @@ export default function ChatView({
 
   // Send text message
   const handleSendMessage = async () => {
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     const text = inputText.trim();
     if (!text || !cryptoKey) return;
 
@@ -1077,6 +1139,10 @@ export default function ChatView({
 
   // Send encrypted voice note
   const handleSendVoiceNote = async (audioBlob, duration) => {
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     if (!cryptoKey || !audioBlob) return;
 
     const voiceId = `voice-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1151,6 +1217,10 @@ export default function ChatView({
 
   // Send encrypted photo
   const handleSendPhoto = async ({ dataUrl, isViewOnce }) => {
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     const photoId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const now = Date.now();
     const currentReply = replyingTo ? {
@@ -1368,9 +1438,19 @@ export default function ChatView({
 
   // Leave session
   const handleLeave = () => {
-    socketRef.current?.send(JSON.stringify({
-      type: 'leave_session', sessionId, clientId
-    }));
+    try {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: 'leave_session', sessionId, clientId
+        }));
+        socketRef.current.close(1001, 'Going Away');
+      }
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const blob = new Blob([JSON.stringify({ sessionId, clientId })], { type: 'application/json' });
+        navigator.sendBeacon(getApiUrl('/api/session/leave'), blob);
+      }
+      sessionStorage.removeItem('u2u-active-session');
+    } catch {}
     setTimeout(() => onLeave(), 100);
   };
 
@@ -1706,9 +1786,14 @@ export default function ChatView({
           <div className="composer-bar">
             <button
               className="composer-add-btn"
-              onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)}
-              title="Add photo"
+              onClick={() => {
+                if (peerLeftPermanently) return;
+                setAttachmentMenuOpen(!attachmentMenuOpen);
+              }}
+              title={peerLeftPermanently ? 'User left the session' : 'Add photo'}
               aria-label="Add attachment"
+              disabled={peerLeftPermanently}
+              style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
               <Plus size={19} />
             </button>
@@ -1716,11 +1801,13 @@ export default function ChatView({
             <textarea
               ref={textareaRef}
               className="composer-input"
-              placeholder="Write a message…"
+              placeholder={peerLeftPermanently ? 'User left the session' : 'Write a message…'}
               rows={1}
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              disabled={peerLeftPermanently}
+              style={peerLeftPermanently ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
               autoComplete="on"
               autoCorrect="on"
               autoCapitalize="sentences"
@@ -1732,9 +1819,14 @@ export default function ChatView({
             <button
               type="button"
               className={`composer-emoji-btn ${emojiPickerOpen ? 'active' : ''}`}
-              onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
-              title="U2U Emojis"
+              onClick={() => {
+                if (peerLeftPermanently) return;
+                setEmojiPickerOpen(!emojiPickerOpen);
+              }}
+              title={peerLeftPermanently ? 'User left the session' : 'U2U Emojis'}
               aria-label="Open U2U emoji picker"
+              disabled={peerLeftPermanently}
+              style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
               <Smile size={18} />
             </button>
@@ -1743,9 +1835,14 @@ export default function ChatView({
             {!inputText.trim() && (
               <button
                 className="composer-mic-btn"
-                onClick={() => setIsRecording(true)}
-                title="Send a voice note"
+                onClick={() => {
+                  if (peerLeftPermanently) return;
+                  setIsRecording(true);
+                }}
+                title={peerLeftPermanently ? 'User left the session' : 'Send a voice note'}
                 aria-label="Record voice note"
+                disabled={peerLeftPermanently}
+                style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
               >
                 <Mic size={18} />
               </button>
@@ -1755,9 +1852,14 @@ export default function ChatView({
             {inputText.trim() && (
               <button
                 className="composer-send-btn"
-                onClick={handleSendMessage}
-                title="Send message"
+                onClick={() => {
+                  if (peerLeftPermanently) return;
+                  handleSendMessage();
+                }}
+                title={peerLeftPermanently ? 'User left the session' : 'Send message'}
                 aria-label="Send"
+                disabled={peerLeftPermanently}
+                style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               >
                 <ArrowUp size={18} />
               </button>
