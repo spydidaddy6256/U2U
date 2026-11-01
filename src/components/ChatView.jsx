@@ -1465,16 +1465,47 @@ export default function ChatView({
     );
   }
 
+  // Helper to extract reliable numerical timestamp from message or system item
+  const getTimestamp = (item) => {
+    if (typeof item?.timestamp === 'number' && !isNaN(item.timestamp)) return item.timestamp;
+    if (typeof item?.timestamp === 'string') {
+      const parsed = Date.parse(item.timestamp);
+      if (!isNaN(parsed)) return parsed;
+      const num = Number(item.timestamp);
+      if (!isNaN(num)) return num;
+    }
+    if (item?.timestamp instanceof Date) return item.timestamp.getTime();
+    return 0;
+  };
+
   // Merge messages and system messages in continuous chronological order
-  const allItems = [
-    ...messages
-      .filter(m => !m.isUnsent && !(m.type === 'voice' && (m.isExpired || (voiceTimers[m.id] && voiceTimers[m.id].secondsLeft <= 0))))
-      .map(m => ({ ...m, itemType: 'message' })),
-    ...systemMessages.map(s => ({ ...s, itemType: 'system' }))
-  ].sort((a, b) => {
-    const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
-    const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+  const rawMessages = messages
+    .filter(m => !m.isUnsent && !(m.type === 'voice' && (m.isExpired || (voiceTimers[m.id] && voiceTimers[m.id].secondsLeft <= 0))))
+    .map(m => ({ ...m, itemType: 'message' }));
+
+  // Find latest message timestamp so departure notice is never placed above or before prior messages
+  let maxMessageTime = 0;
+  for (const m of rawMessages) {
+    const t = getTimestamp(m);
+    if (t > maxMessageTime) maxMessageTime = t;
+  }
+
+  const rawSystem = systemMessages.map(s => {
+    let t = getTimestamp(s);
+    // If this is a departure notice and prior messages exist, place it immediately after the last message
+    if (s.text?.includes('left the session') && maxMessageTime > 0 && t <= maxMessageTime) {
+      t = maxMessageTime + 1;
+    }
+    return { ...s, timestamp: t, itemType: 'system' };
+  });
+
+  const allItems = [...rawMessages, ...rawSystem].sort((a, b) => {
+    const timeA = getTimestamp(a);
+    const timeB = getTimestamp(b);
     if (timeA !== timeB) return timeA - timeB;
+    // Tie-breaker: normal messages precede system notices at the same timestamp
+    if (a.itemType === 'message' && b.itemType === 'system') return -1;
+    if (a.itemType === 'system' && b.itemType === 'message') return 1;
     return String(a.id || '').localeCompare(String(b.id || ''));
   });
 

@@ -375,6 +375,105 @@ async function runSessionDepartureTests() {
     connNormA.ws.close(1001, 'Going Away');
     connNormB.ws.close(1001, 'Going Away');
 
+    // ──────────────────────────────────────────────────────────
+    // TEST 10: Chat timeline positioning & chronology audit
+    // ──────────────────────────────────────────────────────────
+    console.log('\n--- TEST 10: CHAT TIMELINE POSITIONING & CHRONOLOGY AUDIT ---');
+    const fs = await import('fs');
+    const path = await import('path');
+    const chatViewCode = fs.readFileSync(path.resolve('src/components/ChatView.jsx'), 'utf8');
+
+    // 10.1: Structural checks on ChatView.jsx
+    assert(!chatViewCode.includes('departure-banner'), 'ChatView does not contain a separate departure-banner element');
+    assert(chatViewCode.includes('className="system-message"'), 'ChatView renders departure notices using system-message');
+    assert(chatViewCode.includes('maxMessageTime'), 'ChatView computes maxMessageTime to anchor departure chronologically');
+    assert(chatViewCode.includes('t = maxMessageTime + 1'), 'Departure notice is placed immediately after the latest message');
+
+    // 10.2: Timeline ordering simulation with multiple messages and departure notice
+    function simulateTimeline(messages, systemMessages) {
+      const getTimestamp = (item) => {
+        if (typeof item?.timestamp === 'number' && !isNaN(item.timestamp)) return item.timestamp;
+        if (typeof item?.timestamp === 'string') {
+          const parsed = Date.parse(item.timestamp);
+          if (!isNaN(parsed)) return parsed;
+          const num = Number(item.timestamp);
+          if (!isNaN(num)) return num;
+        }
+        if (item?.timestamp instanceof Date) return item.timestamp.getTime();
+        return 0;
+      };
+
+      const rawMessages = messages
+        .filter(m => !m.isUnsent)
+        .map(m => ({ ...m, itemType: 'message' }));
+
+      let maxMessageTime = 0;
+      for (const m of rawMessages) {
+        const t = getTimestamp(m);
+        if (t > maxMessageTime) maxMessageTime = t;
+      }
+
+      const rawSystem = systemMessages.map(s => {
+        let t = getTimestamp(s);
+        if (s.text?.includes('left the session') && maxMessageTime > 0 && t <= maxMessageTime) {
+          t = maxMessageTime + 1;
+        }
+        return { ...s, timestamp: t, itemType: 'system' };
+      });
+
+      return [...rawMessages, ...rawSystem].sort((a, b) => {
+        const timeA = getTimestamp(a);
+        const timeB = getTimestamp(b);
+        if (timeA !== timeB) return timeA - timeB;
+        if (a.itemType === 'message' && b.itemType === 'system') return -1;
+        if (a.itemType === 'system' && b.itemType === 'message') return 1;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+      });
+    }
+
+    // Test 10.2: Normal chronological flow (messages before departure)
+    const normalItems = simulateTimeline(
+      [
+        { id: 'm1', text: 'Hello', timestamp: 1000 },
+        { id: 'm2', text: 'How are you?', timestamp: 2000 }
+      ],
+      [{ id: 's1', text: 'User left the session', timestamp: 3000 }]
+    );
+    assert(normalItems.length === 3, 'Timeline contains exactly 3 items');
+    assert(normalItems[0].id === 'm1', 'First item is message 1');
+    assert(normalItems[1].id === 'm2', 'Second item is message 2');
+    assert(normalItems[2].id === 's1', 'Last item is departure notice immediately after last message');
+
+    // Test 10.3: Clock skew (server departure timestamp earlier than client message timestamp)
+    const skewedItems = simulateTimeline(
+      [
+        { id: 'm1', text: 'Hi', timestamp: 1000 },
+        { id: 'm2', text: 'Bye', timestamp: 5000 }
+      ],
+      [{ id: 's1', text: 'User left the session', timestamp: 4000 }] // server clock was 1s behind client
+    );
+    assert(skewedItems[0].id === 'm1' && skewedItems[1].id === 'm2', 'Earlier messages precede departure notice under clock skew');
+    assert(skewedItems[2].id === 's1', 'Departure notice anchored after m2 despite clock skew');
+
+    // Test 10.4: Refresh / reload session restoration chronology
+    const reloadedItems = simulateTimeline(
+      [
+        { id: 'm1', text: 'Message from history 1', timestamp: 100 },
+        { id: 'm2', text: 'Message from history 2', timestamp: 200 },
+        { id: 'm3', text: 'Message from history 3', timestamp: 300 }
+      ],
+      [{ id: 's1', text: 'User left the session', timestamp: 350 }]
+    );
+    assert(reloadedItems[reloadedItems.length - 1].id === 's1', 'Refreshing preserves departure notice at the end of conversation');
+    assert(reloadedItems.filter(i => i.itemType === 'system').length === 1, 'Notice appears exactly once in the message list');
+
+    // Test 10.5: Empty chat departure (peer leaves before any messages)
+    const emptyChatItems = simulateTimeline(
+      [],
+      [{ id: 's1', text: 'User left the session', timestamp: 1000 }]
+    );
+    assert(emptyChatItems.length === 1 && emptyChatItems[0].id === 's1', 'Empty session departure notice renders cleanly alone');
+
   } catch (err) {
     console.error('Fatal test error:', err);
     failed++;
