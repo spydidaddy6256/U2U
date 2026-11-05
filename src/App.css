@@ -536,6 +536,7 @@
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  overflow-anchor: none;
 }
 
 /* Spacer disabled: conversations start at top across both desktop and Android */
@@ -3881,6 +3882,7 @@ body.photo-viewer-active .u2u-header {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   padding: 6px 16px 8px;
   background: rgba(10, 11, 14, 0.72);
   backdrop-filter: blur(12px);

@@ -74,7 +74,7 @@ export default function ChatView({
   onRevealHeader,
   selfIdentity,
   onPeerIdentityChange,
-  onScrollDirectionChange,
+  _onScrollDirectionChange,
 }) {
   const [messages, setMessages] = useState([]);
   const [systemMessages, setSystemMessages] = useState([]);
@@ -252,29 +252,16 @@ export default function ChatView({
     }
   }, []);
 
-  const lastScrollTopRef = useRef(0);
   const handleScroll = useCallback(() => {
     if (isAutoScrollingRef.current) return;
     const vp = viewportRef.current;
     if (!vp) return;
     const currentScrollTop = vp.scrollTop;
-    const delta = currentScrollTop - lastScrollTopRef.current;
-
-    // Filter minor jitter; notify on noticeable up or down scroll
-    if (Math.abs(delta) > 12) {
-      if (delta > 0 && currentScrollTop > 40) {
-        onScrollDirectionChange?.('down');
-      } else if (delta < 0) {
-        onScrollDirectionChange?.('up');
-      }
-      lastScrollTopRef.current = currentScrollTop;
-    }
-
     const distFromBottom = vp.scrollHeight - currentScrollTop - vp.clientHeight;
     const atBottom = distFromBottom < 80;
     setIsAtBottom(atBottom);
     if (atBottom) setNewMsgCount(0);
-  }, [onScrollDirectionChange]);
+  }, []);
 
   // Photo timers tick effect
   useEffect(() => {

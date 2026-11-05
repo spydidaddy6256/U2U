@@ -842,7 +842,6 @@ export default function App() {
                 onRevealHeader={resetHeaderHideTimer}
                 selfIdentity={selfIdentity}
                 onPeerIdentityChange={setPeerIdentity}
-                onScrollDirectionChange={(dir) => setIdentityHeaderVisible(dir === 'up')}
               />
             )}
 

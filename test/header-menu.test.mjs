@@ -23,6 +23,8 @@ function runHeaderMenuTests() {
     const headerJsx = fs.readFileSync(path.resolve('src/components/Header.jsx'), 'utf8');
     const indexCss = fs.readFileSync(path.resolve('src/index.css'), 'utf8');
     const appCss = fs.readFileSync(path.resolve('src/App.css'), 'utf8');
+    const appJsx = fs.readFileSync(path.resolve('src/App.jsx'), 'utf8');
+    const chatViewJsx = fs.readFileSync(path.resolve('src/components/ChatView.jsx'), 'utf8');
 
     // ── 1. Lucide Menu Icon & Component Structure ──
     console.log('--- 1. LUCIDE MENU ICON & COMPONENT AUDIT ---');
@@ -102,7 +104,7 @@ function runHeaderMenuTests() {
       const buttonBottom = buttonTop + buttonSize;
 
       // Container is positioned at right edge inside padding
-      const containerRightOffset = headerPaddingRight;
+      const _containerRightOffset = headerPaddingRight;
       const containerLeft = viewportWidth - headerPaddingRight - buttonSize;
 
       // Dropdown menu dimensions
@@ -163,6 +165,21 @@ function runHeaderMenuTests() {
     assert(mobile.menuLeft >= 0 && mobile.menuLeft === 375 - 6 - 230, '375×812: Dropdown left edge has comfortable 139px margin from screen left edge');
     assert(mobile.menuBottom < 812, '375×812: Dropdown bottom is not clipped (336px < 812px)');
     assert(mobile.menuWidth === 230, '375×812: Dropdown width respects 230px mobile constraint');
+
+    // ── 6. Header Position Stability & Scroll Isolation Audit ──
+    console.log('\n--- 6. HEADER POSITION STABILITY & SCROLL ISOLATION AUDIT ---');
+    assert(indexCss.includes('.u2u-header {') && indexCss.includes('flex-shrink: 0;'),
+      '.u2u-header includes flex-shrink: 0 to prevent flexbox compression');
+    assert(appCss.includes('.messages-viewport {') && appCss.includes('overflow-anchor: none;'),
+      '.messages-viewport includes overflow-anchor: none to prevent scroll-anchoring jumps');
+    assert(appCss.includes('.u2u-identity-subbar {') && appCss.includes('flex-shrink: 0;'),
+      '.u2u-identity-subbar includes flex-shrink: 0 for stable header height');
+    assert(!appJsx.includes('onScrollDirectionChange={(dir) => setIdentityHeaderVisible(dir === \'up\')}'),
+      'App.jsx does not toggle header visibility on scroll direction changes');
+    assert(!chatViewJsx.includes("onScrollDirectionChange?.('down')"),
+      'ChatView.jsx does not dispatch down-scroll header collapse events');
+    assert(!chatViewJsx.includes("onScrollDirectionChange?.('up')"),
+      'ChatView.jsx does not dispatch up-scroll header expand events');
 
   } catch (err) {
     console.error('Fatal error in Header Menu tests:', err);
