@@ -96,14 +96,33 @@ export default function App() {
   // Permanent Profile & Identity State
   const [activeProfile, setActiveProfile] = useState(() => getActiveProfile());
   const [selfIdentity, setSelfIdentity] = useState(() => {
+    if (initialSession && initialSession.selfIdentity) {
+      return initialSession.selfIdentity;
+    }
     const profile = getActiveProfile();
     if (profile) {
       return { displayName: profile.username, avatar: profile.avatar, isPermanent: true };
     }
     return { displayName: generateAnonymousName(), avatar: 'neon-neko' };
   });
-  const [peerIdentity, setPeerIdentity] = useState(null);
+  const [peerIdentity, setPeerIdentity] = useState(() => initialSession?.peerIdentity || null);
   const [identityHeaderVisible, setIdentityHeaderVisible] = useState(true);
+
+  const handlePeerIdentityChange = useCallback((newPeer) => {
+    setPeerIdentity(newPeer);
+    if (sessionId && newPeer) {
+      saveActiveSession({
+        sessionId,
+        passcode,
+        expiresAt,
+        authTicket,
+        joinToken,
+        view: 'chat',
+        selfIdentity,
+        peerIdentity: newPeer
+      });
+    }
+  }, [sessionId, passcode, expiresAt, authTicket, joinToken, selfIdentity]);
 
   // Profile Modals
   const [createProfileModalOpen, setCreateProfileModalOpen] = useState(false);
@@ -159,10 +178,12 @@ export default function App() {
         expiresAt,
         authTicket,
         joinToken,
-        view: 'chat'
+        view: 'chat',
+        selfIdentity,
+        peerIdentity
       });
     }
-  }, [view, sessionId, passcode, expiresAt, authTicket, joinToken]);
+  }, [view, sessionId, passcode, expiresAt, authTicket, joinToken, selfIdentity, peerIdentity]);
 
   // Connection & peer presence state for header synchronization
   const [connectionStatus, setConnectionStatus] = useState('offline');
@@ -601,6 +622,18 @@ export default function App() {
     setSelfIdentity(chosenIdentity);
     setIdentityHeaderVisible(true);
     playConnectedSound();
+    if (sessionId) {
+      saveActiveSession({
+        sessionId,
+        passcode,
+        expiresAt,
+        authTicket,
+        joinToken,
+        view: 'chat',
+        selfIdentity: chosenIdentity,
+        peerIdentity
+      });
+    }
     setView('chat');
     addToast('Connected securely');
   };
@@ -884,7 +917,7 @@ export default function App() {
                   setLeaveModalOpen={setLeaveModalOpen}
                   onRevealHeader={resetHeaderHideTimer}
                   selfIdentity={selfIdentity}
-                  onPeerIdentityChange={setPeerIdentity}
+                  onPeerIdentityChange={handlePeerIdentityChange}
                   onScrollDirectionChange={(dir) => setIdentityHeaderVisible(dir === 'up')}
                 />
               ) : (
@@ -937,8 +970,8 @@ export default function App() {
         ))}
       </div>
 
-      {/* PWA Install Prompt */}
-      <PwaInstallPrompt />
+      {/* PWA Install Prompt — Website browsers only, strictly never on native Android */}
+      {!isNative && <PwaInstallPrompt />}
 
       {/* Cinematic Launch — 3D Logo Reveal */}
       {showLaunchReveal && (

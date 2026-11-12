@@ -11,6 +11,7 @@
     "lint": "oxlint",
     "test:web": "node test/security.test.mjs",
     "test:android": "node test/android-security.test.mjs",
+    "test:native": "node test/native-android-fixes.test.mjs",
     "test:upgrade": "node test/product-upgrade.test.mjs",
     "test:separation": "node test/platform-separation.test.mjs",
     "test:avatar": "node test/custom-avatar-upload.test.mjs",

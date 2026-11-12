@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Download, X, Share2, Smartphone } from 'lucide-react';
 import { playTickSound } from '../utils/audio';
+import { isNativeAndroid } from '../utils/apiConfig';
 
 const DISMISS_KEY = 'u2u_pwa_install_dismissed';
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -27,6 +28,9 @@ export default function PwaInstallPrompt() {
   }, []);
 
   useEffect(() => {
+    // Never show or register install prompts inside the native Android Capacitor app
+    if (isNativeAndroid()) return;
+
     // Check if already running in standalone mode (already installed)
     const isStandalone = 
       window.matchMedia('(display-mode: standalone)').matches ||
@@ -109,7 +113,7 @@ export default function PwaInstallPrompt() {
     }
   };
 
-  if (!visible) return null;
+  if (isNativeAndroid() || !visible) return null;
 
   return (
     <div 

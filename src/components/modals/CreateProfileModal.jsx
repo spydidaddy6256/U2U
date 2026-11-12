@@ -3,8 +3,9 @@ import { ShieldCheck, Copy, Check, KeyRound, ArrowRight, ArrowLeft, AlertTriangl
 import { AVATAR_PRESETS, getAvatarSvg } from '../../data/avatars';
 import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName, validateAvatarFile } from '../../utils/identity';
 import { generateMasterRecoveryKey, deriveProfileId, deriveAuthProof, saveProfileLocally } from '../../utils/profileCrypto';
-import { getApiUrl } from '../../utils/apiConfig';
+import { getApiUrl, isNativeAndroid } from '../../utils/apiConfig';
 import { playTickSound, playErrorSound, playConnectedSound } from '../../utils/audio';
+import AvatarCropModal from './AvatarCropModal';
 
 export default function CreateProfileModal({
   isOpen,
@@ -16,6 +17,8 @@ export default function CreateProfileModal({
   const [username, setUsername] = useState(() => generateRandomDisplayName());
   const [selectedAvatarId, setSelectedAvatarId] = useState(AVATAR_PRESETS[0].id);
   const [customAvatar, setCustomAvatar] = useState(null);
+  const [cropImageSrc, setCropImageSrc] = useState('');
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const fileInputRef = useRef(null);
   const [recoveryKey, setRecoveryKey] = useState('');
   const [profileId, setProfileId] = useState('');
@@ -41,17 +44,36 @@ export default function CreateProfileModal({
     }
 
     setErrorMsg('');
+    const isNative = isNativeAndroid();
     const reader = new FileReader();
     reader.onload = () => {
-      setCustomAvatar(reader.result);
-      setSelectedAvatarId('custom');
-      playTickSound();
+      if (isNative) {
+        setCropImageSrc(reader.result);
+        setIsCropModalOpen(true);
+      } else {
+        setCustomAvatar(reader.result);
+        setSelectedAvatarId('custom');
+        playTickSound();
+      }
     };
     reader.onerror = () => {
       playErrorSound();
       setErrorMsg('Failed to read image file');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleApplyCroppedAvatar = (croppedDataUrl) => {
+    setCustomAvatar(croppedDataUrl);
+    setSelectedAvatarId('custom');
+    setIsCropModalOpen(false);
+    setCropImageSrc('');
+  };
+
+  const handleCancelCrop = () => {
+    setIsCropModalOpen(false);
+    setCropImageSrc('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleRemoveCustomAvatar = () => {
@@ -545,6 +567,15 @@ export default function CreateProfileModal({
           </>
         )}
       </div>
+
+      {isCropModalOpen && (
+        <AvatarCropModal
+          isOpen={isCropModalOpen}
+          imageSrc={cropImageSrc}
+          onApplyCrop={handleApplyCroppedAvatar}
+          onCancel={handleCancelCrop}
+        />
+      )}
     </div>
   );
 }

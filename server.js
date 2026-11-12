@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import proxyaddr from 'proxy-addr';
 import { applyUserReaction } from './src/utils/reactions.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,7 +14,11 @@ const app = express();
 const server = createServer(app);
 
 // Trust proxy for secure IP extraction behind reverse proxies (Render, Cloudflare, etc.)
-app.set('trust proxy', 1);
+// Trust loopback and local private networks by default so public spoofed headers are not trusted
+const trustProxyConfig = process.env.TRUST_PROXY
+  ? (isNaN(Number(process.env.TRUST_PROXY)) ? process.env.TRUST_PROXY : Number(process.env.TRUST_PROXY))
+  : 'loopback, linklocal, uniquelocal';
+app.set('trust proxy', trustProxyConfig);
 
 // Security Headers Middleware
 app.use((req, res, next) => {
@@ -47,6 +52,7 @@ app.use((req, res, next) => {
 
 // JSON Body Parser with strict limit
 app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ type: 'text/plain', limit: '1mb' }));
 
 // Safe JSON parse & payload size error handler (Prevents leaking stack traces or HTML errors)
 app.use((err, req, res, next) => {
@@ -124,10 +130,38 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PHOTO_LIFETIME_MS = 8 * 1000; // Exactly 8 seconds authoritative lifetime once opened
 const VOICE_NOTE_UNLISTENED_LIFETIME_MS = 180 * 1000; // 3 minutes unplayed
 const VOICE_NOTE_LISTENED_LIFETIME_MS = 60 * 1000; // 60 seconds after full play
+const RECONNECT_GRACE_PERIOD_MS = process.env.RECONNECT_GRACE_PERIOD_MS
+  ? parseInt(process.env.RECONNECT_GRACE_PERIOD_MS, 10)
+  : 30 * 1000; // 30 seconds reconnection grace period for temporary interruptions
 
-// Safe IP helper
+// Normalize IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1 -> 127.0.0.1)
+function normalizeIp(ip) {
+  if (!ip || typeof ip !== 'string') return '127.0.0.1';
+  let clean = ip.trim();
+  if (clean.startsWith('::ffff:')) {
+    clean = clean.slice(7);
+  }
+  return clean;
+}
+
+function isLoopbackIp(ip) {
+  const normalized = normalizeIp(ip);
+  return normalized === '127.0.0.1' || normalized === '::1';
+}
+
+// Safe IP helper supporting both Express Request and WebSocket IncomingMessage
 function getClientIp(req) {
-  return req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  if (req.ip) return normalizeIp(req.ip);
+  const trustFn = app.get('trust proxy fn');
+  if (trustFn) {
+    try {
+      const ip = proxyaddr(req, trustFn);
+      if (ip) return normalizeIp(ip);
+    } catch {
+      // Fallback below
+    }
+  }
+  return normalizeIp(req.socket?.remoteAddress || '127.0.0.1');
 }
 
 // Rate Limiter: Session Creation (max 15 creates per 15 min per IP)
@@ -268,6 +302,131 @@ function startVoiceUnreadTimer(room, targetMsg) {
   room.voiceTimers.set(messageId, timer);
 }
 
+// Two-Stage Anti-Spam Protection:
+// Stage 1: Rolling 10s window, max 20 messages. 21st message warns sender:
+// "You're sending messages too quickly. Please slow down." (messaging not blocked)
+// Stage 2: If sender continues sending messages after receiving warning:
+// 10-second cooldown for the entire chat session. Both participants blocked.
+// "Spam detected. Messaging paused." (synchronized countdown)
+function checkRoomMessageSpam(room, clientId, ws) {
+  if (!room || !clientId) return { allowed: true };
+  const now = Date.now();
+
+  // 1. Check active chat session cooldown
+  if (room.cooldown && room.cooldown.active) {
+    if (now < room.cooldown.expiresAt) {
+      const remainingSeconds = Math.max(1, Math.ceil((room.cooldown.expiresAt - now) / 1000));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'spam_cooldown',
+          active: true,
+          duration: 10,
+          expiresAt: room.cooldown.expiresAt,
+          remainingSeconds,
+          message: 'Spam detected. Messaging paused.'
+        }));
+      }
+      return { allowed: false, isCooldown: true };
+    } else {
+      room.cooldown.active = false;
+      if (room.cooldownTimer) {
+        clearTimeout(room.cooldownTimer);
+        room.cooldownTimer = null;
+      }
+    }
+  }
+
+  // 2. Track messages sent by each participant independently
+  if (!room.spamTracker) room.spamTracker = new Map();
+  let tracker = room.spamTracker.get(clientId);
+  if (!tracker) {
+    tracker = { timestamps: [], warned: false, lastWarnedAt: 0 };
+    room.spamTracker.set(clientId, tracker);
+  }
+
+  // Rolling 10-second window
+  const windowCutoff = now - 10000;
+  tracker.timestamps = tracker.timestamps.filter(t => t > windowCutoff);
+
+  // Reset warning state when participant's message rate returns to normal (<= 20 messages in rolling 10s)
+  if (tracker.timestamps.length <= 20) {
+    tracker.warned = false;
+  }
+
+  // 3. Stage Two: If the same participant continues sending messages after receiving the warning
+  if (tracker.warned && tracker.timestamps.length >= 20) {
+    const cooldownDuration = 10;
+    const cooldownExpiresAt = now + cooldownDuration * 1000;
+    room.cooldown = {
+      active: true,
+      expiresAt: cooldownExpiresAt,
+      duration: cooldownDuration,
+      startedAt: now
+    };
+
+    // Reset trackers so messaging resumes clean after cooldown
+    for (const t of room.spamTracker.values()) {
+      t.timestamps = [];
+      t.warned = false;
+    }
+
+    const cooldownPayload = JSON.stringify({
+      type: 'spam_cooldown',
+      active: true,
+      duration: cooldownDuration,
+      expiresAt: cooldownExpiresAt,
+      remainingSeconds: cooldownDuration,
+      message: 'Spam detected. Messaging paused.'
+    });
+
+    for (const pWs of room.participants.values()) {
+      if (pWs.readyState === WebSocket.OPEN) {
+        pWs.send(cooldownPayload);
+      }
+    }
+
+    if (room.cooldownTimer) clearTimeout(room.cooldownTimer);
+    room.cooldownTimer = setTimeout(() => {
+      if (room.cooldown && room.cooldown.active) {
+        room.cooldown.active = false;
+        room.cooldownTimer = null;
+        const resumedPayload = JSON.stringify({
+          type: 'spam_cooldown',
+          active: false,
+          remainingSeconds: 0,
+          message: 'Messaging resumed.'
+        });
+        for (const pWs of room.participants.values()) {
+          if (pWs.readyState === WebSocket.OPEN) {
+            pWs.send(resumedPayload);
+          }
+        }
+      }
+    }, cooldownDuration * 1000);
+
+    return { allowed: false, isCooldown: true };
+  }
+
+  // 4. Record current message
+  tracker.timestamps.push(now);
+
+  // 5. Stage One: Up to 20 messages allowed. More than 20 within 10s triggers warning
+  if (tracker.timestamps.length === 21) {
+    tracker.warned = true;
+    tracker.lastWarnedAt = now;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'spam_warning',
+        message: "You're sending messages too quickly. Please slow down."
+      }));
+    }
+    // Do not block messaging at Stage One
+    return { allowed: true, warned: true };
+  }
+
+  return { allowed: true };
+}
+
 // Periodic cleanup of expired rooms, tickets, and rate-limit records
 setInterval(() => {
   const now = Date.now();
@@ -288,6 +447,7 @@ setInterval(() => {
       }
       for (const timer of room.photoTimers.values()) clearTimeout(timer);
       for (const timer of room.voiceTimers.values()) clearTimeout(timer);
+      if (room.cooldownTimer) clearTimeout(room.cooldownTimer);
       if (room.disconnectTimers) {
         for (const timer of room.disconnectTimers.values()) clearTimeout(timer);
         room.disconnectTimers.clear();
@@ -519,13 +679,18 @@ app.post('/api/session/create', checkMaintenance, (req, res) => {
     expiresAt: now + SESSION_TTL_MS,
     burned: false,
     participants: new Map(),
+    participantHistory: new Set(),
     messages: [],
     photoTimers: new Map(),
     voiceTimers: new Map(),
     disconnectTimers: new Map(),
     peerLeftStatus: null,
     leftClientIds: new Set(),
-    deletedMessageIds: new Set()
+    deletedMessageIds: new Set(),
+    hadTwoParticipants: false,
+    cooldown: null,
+    cooldownTimer: null,
+    spamTracker: new Map()
   };
 
   rooms.set(cleanSessionId, room);
@@ -577,21 +742,49 @@ app.post('/api/session/auth', checkMaintenance, (req, res) => {
     });
   }
 
+  // If client already left this session, deny re-entry
+  if (room.leftClientIds?.has(clientId)) {
+    return res.status(403).json({
+      error: 'SESSION_LEFT',
+      message: 'You have left this session. Re-entry is not permitted.'
+    });
+  }
+
+  // If session has already ended (peer departed) and this is not an existing remaining participant
+  if (room.peerLeftStatus && (!clientId || !room.participantHistory?.has(clientId))) {
+    return res.status(403).json({
+      error: 'SESSION_TERMINATED',
+      message: 'This session has ended.'
+    });
+  }
+
   // Check 2-participant limit
-  const isReconnecting = clientId && room.participants.has(clientId);
+  const isReconnecting = clientId && (room.participants.has(clientId) || room.participantHistory?.has(clientId));
   if (!isReconnecting && room.participants.size >= 2) {
     return res.status(403).json({
       error: 'This session is full. Exactly two participants are permitted.'
     });
   }
 
+  if (clientId) {
+    if (!room.participantHistory) room.participantHistory = new Set();
+    room.participantHistory.add(clientId);
+  }
+
   // Invalidate join token once second participant joins
-  if (!isReconnecting && room.participants.size === 1) {
+  if (!isReconnecting && (room.participants.size === 1 || room.participantHistory?.size >= 2)) {
+    room.hadTwoParticipants = true;
     room.joinTokenUsed = true;
     if (room.joinToken) {
       joinTokens.delete(room.joinToken);
       usedTokens.set(room.joinToken, cleanSessionId);
     }
+  }
+
+  // Cancel disconnect timer on successful auth reconnect
+  if (room.disconnectTimers?.has(clientId)) {
+    clearTimeout(room.disconnectTimers.get(clientId));
+    room.disconnectTimers.delete(clientId);
   }
 
   clearFailedAuth(rateLimitKey);
@@ -610,6 +803,60 @@ app.post('/api/session/auth', checkMaintenance, (req, res) => {
     participantsCount: room.participants.size,
     ticket
   });
+});
+
+// API: Intentional Session Leave (Page Unload Beacon / Explicit Leave)
+app.post('/api/session/leave', (req, res) => {
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch {}
+  }
+  const sessionId = body?.sessionId;
+  const clientId = body?.clientId;
+
+  if (!sessionId || !clientId || typeof sessionId !== 'string' || typeof clientId !== 'string') {
+    return res.status(400).json({ error: 'Session ID and Client ID required' });
+  }
+
+  const cleanId = sessionId.trim().toUpperCase();
+  const room = rooms.get(cleanId);
+  if (room) {
+    if (room.disconnectTimers?.has(clientId)) {
+      clearTimeout(room.disconnectTimers.get(clientId));
+      room.disconnectTimers.delete(clientId);
+    }
+
+    const pWs = room.participants.get(clientId);
+    if (pWs) {
+      pWs.isIntentionalLeave = true;
+      room.participants.delete(clientId);
+      try { pWs.close(1001, 'Going Away'); } catch {}
+    }
+
+    if (!room.leftClientIds) room.leftClientIds = new Set();
+    room.leftClientIds.add(clientId);
+
+    if (!room.peerLeftStatus) {
+      const leaveTimestamp = Date.now();
+      room.peerLeftStatus = {
+        text: 'User left the session',
+        timestamp: leaveTimestamp,
+        departedClientId: clientId
+      };
+
+      for (const clientWs of room.participants.values()) {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({
+            type: 'peer_left_permanent',
+            text: 'User left the session',
+            timestamp: leaveTimestamp
+          }));
+        }
+      }
+    }
+  }
+
+  return res.json({ success: true });
 });
 
 // API 3: Verify Join Token Status
@@ -783,7 +1030,7 @@ const wss = new WebSocketServer({
 
 // WebSocket Connection Handling with Differentiated Rate Limiting & BOLA Prevention
 wss.on('connection', (ws, req) => {
-  const clientIp = req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : (req.socket?.remoteAddress || '127.0.0.1');
+  const clientIp = getClientIp(req);
 
   // Track concurrent connections per IP (max 15)
   if (!ipWsConnections.has(clientIp)) {
@@ -801,7 +1048,7 @@ wss.on('connection', (ws, req) => {
   }
   currentConns.add(ws);
 
-  // Connection attempts rate limiting per IP (max 30 connects per min)
+  // Connection attempts rate limiting per IP (max 30 connects per min, relaxed to 200 only for genuine loopback in non-production)
   const now = Date.now();
   let attemptRec = ipWsConnectAttempts.get(clientIp);
   if (!attemptRec || now > attemptRec.resetAt) {
@@ -810,7 +1057,24 @@ wss.on('connection', (ws, req) => {
     attemptRec.count += 1;
   }
   ipWsConnectAttempts.set(clientIp, attemptRec);
-  if (attemptRec.count > 30) {
+
+  const socketIp = req.socket?.remoteAddress || '';
+  const isPhysicalLoopback = isLoopbackIp(socketIp);
+  const hasForwardedHeader = Boolean(req.headers['x-forwarded-for']);
+  const nodeEnv = (process.env.NODE_ENV || '').toLowerCase().trim();
+  const isProduction = nodeEnv === 'production' || nodeEnv === 'prod';
+
+  // Genuine loopback connection requires:
+  // 1. Not in production (production always strictly enforces 30/min limit)
+  // 2. Physical TCP socket is loopback (127.0.0.1 / ::1)
+  // 3. No forwarded header (never trust client-supplied X-Forwarded-For as proof of localhost)
+  // 4. Resolved client IP is loopback
+  const isGenuineLoopback = !isProduction && isPhysicalLoopback && !hasForwardedHeader && isLoopbackIp(clientIp);
+  const maxAttempts = isGenuineLoopback ? 200 : 30;
+
+  if (attemptRec.count > maxAttempts) {
+    currentConns.delete(ws);
+    if (currentConns.size === 0) ipWsConnections.delete(clientIp);
     ws.send(JSON.stringify({
       type: 'error',
       code: 'RATE_LIMITED',
@@ -862,7 +1126,7 @@ wss.on('connection', (ws, req) => {
 
       const costCategory = isLowCost ? 'low' : (isHighCost ? 'high' : 'normal');
 
-      if (!checkEventRate(costCategory)) {
+      if (eventType !== 'message' && !checkEventRate(costCategory)) {
         ws.send(JSON.stringify({
           type: 'error',
           code: 'RATE_LIMITED',
@@ -917,14 +1181,25 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({
               type: 'error',
               code: 'SESSION_LEFT',
-              message: 'You have left this session.'
+              message: 'You have left this session. Re-entry is not permitted.'
+            }));
+            ws.close();
+            return;
+          }
+
+          // If session has already ended (peer departed) and this is not an existing remaining participant
+          if (room.peerLeftStatus && (!clientId || !room.participantHistory?.has(clientId))) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_TERMINATED',
+              message: 'This session has ended.'
             }));
             ws.close();
             return;
           }
 
           // Strict 2-participant limit
-          const isReconnecting = room.participants.has(clientId);
+          const isReconnecting = clientId && (room.participants.has(clientId) || room.participantHistory?.has(clientId));
           if (!isReconnecting && room.participants.size >= 2) {
             ws.send(JSON.stringify({
               type: 'error',
@@ -939,6 +1214,13 @@ wss.on('connection', (ws, req) => {
           isAuthenticated = true;
           currentSessionId = cleanId;
           currentClientId = clientId;
+
+          if (!room.participantHistory) room.participantHistory = new Set();
+          room.participantHistory.add(clientId);
+
+          if (room.participants.size >= 1 || room.participantHistory.size >= 2) {
+            room.hadTwoParticipants = true;
+          }
 
           // Issue rolling reconnect ticket (1-hour window, capped at room expiry)
           const reconnectTicket = crypto.randomBytes(24).toString('hex');
@@ -1004,6 +1286,17 @@ wss.on('connection', (ws, req) => {
               return m;
             });
 
+          // Register joining client identity if provided
+          if (msg.identity && typeof msg.identity === 'object') {
+            const displayName = typeof msg.identity.displayName === 'string'
+              ? msg.identity.displayName.replace(/<[^>]*>/g, '').trim().slice(0, 24)
+              : 'Anonymous';
+            const avatar = typeof msg.identity.avatar === 'string' ? msg.identity.avatar.slice(0, 2000000) : 'neon-neko';
+            const sanitized = { displayName, avatar };
+            if (!room.identities) room.identities = new Map();
+            room.identities.set(clientId, sanitized);
+          }
+
           // Extract any identities already registered in the room
           const existingIdentities = {};
           if (room.identities) {
@@ -1013,6 +1306,9 @@ wss.on('connection', (ws, req) => {
           }
 
           // Confirm join with rolling reconnect ticket and room chat-cleared state
+          const isCooldownActive = Boolean(room.cooldown && room.cooldown.active && joinNow < room.cooldown.expiresAt);
+          const cooldownRemaining = isCooldownActive ? Math.max(1, Math.ceil((room.cooldown.expiresAt - joinNow) / 1000)) : 0;
+
           ws.send(JSON.stringify({
             type: 'joined',
             sessionId: cleanId,
@@ -1022,19 +1318,34 @@ wss.on('connection', (ws, req) => {
             reconnectTicket,
             recentEnvelopes: sanitizedEnvelopes,
             chatClearedAt: room.chatClearedAt || null,
-            peerIdentities: existingIdentities
+            peerIdentities: existingIdentities,
+            spamCooldown: isCooldownActive ? {
+              active: true,
+              duration: 10,
+              expiresAt: room.cooldown.expiresAt,
+              remainingSeconds: cooldownRemaining,
+              message: 'Spam detected. Messaging paused.'
+            } : null
           }));
 
-          // Notify peer
+          // Notify peer and synchronize presence with identities
+          const joiningIdentity = room.identities ? room.identities.get(clientId) : null;
           for (const [pId, pWs] of room.participants.entries()) {
             if (pId !== clientId && pWs.readyState === WebSocket.OPEN) {
+              const peerIdentity = room.identities ? room.identities.get(pId) : null;
               pWs.send(JSON.stringify({
                 type: 'peer_joined',
-                participantsCount: room.participants.size
+                clientId,
+                participantsCount: room.participants.size,
+                senderId: clientId,
+                identity: joiningIdentity || undefined
               }));
               ws.send(JSON.stringify({
                 type: 'peer_present',
-                participantsCount: room.participants.size
+                clientId: pId,
+                participantsCount: room.participants.size,
+                senderId: pId,
+                identity: peerIdentity || undefined
               }));
             }
           }
@@ -1081,6 +1392,22 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (!room) return;
+
+          // Two-Stage Anti-Spam Protection: Authoritative message rate & cooldown validation
+          const spamResult = checkRoomMessageSpam(room, currentClientId, ws);
+          if (!spamResult.allowed) {
+            return;
+          }
+
+          // Reject message if participant left or session has departed
+          if (room.peerLeftStatus || (room.leftClientIds && room.leftClientIds.size > 0) || room.leftClientIds?.has(currentClientId)) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'SESSION_TERMINATED',
+              message: 'User has left the session. No further messages can be sent.'
+            }));
+            return;
+          }
 
           const { envelope } = msg;
           if (!envelope || typeof envelope !== 'object' || !envelope.id || !envelope.ciphertext || !envelope.iv) {
@@ -1442,6 +1769,7 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (room) {
+            ws.isIntentionalLeave = true;
             if (room.disconnectTimers?.has(currentClientId)) {
               clearTimeout(room.disconnectTimers.get(currentClientId));
               room.disconnectTimers.delete(currentClientId);
@@ -1451,19 +1779,23 @@ wss.on('connection', (ws, req) => {
             if (!room.leftClientIds) room.leftClientIds = new Set();
             room.leftClientIds.add(currentClientId);
 
-            const leaveTimestamp = Date.now();
-            room.peerLeftStatus = {
-              text: 'User left the session',
-              timestamp: leaveTimestamp
-            };
+            // Deduplicate: Only set peerLeftStatus and broadcast if not already set
+            if (!room.peerLeftStatus) {
+              const leaveTimestamp = Date.now();
+              room.peerLeftStatus = {
+                text: 'User left the session',
+                timestamp: leaveTimestamp,
+                departedClientId: currentClientId
+              };
 
-            for (const pWs of room.participants.values()) {
-              if (pWs.readyState === WebSocket.OPEN) {
-                pWs.send(JSON.stringify({
-                  type: 'peer_left_permanent',
-                  text: 'User left the session',
-                  timestamp: leaveTimestamp
-                }));
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left_permanent',
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp
+                  }));
+                }
               }
             }
           }
@@ -1528,7 +1860,7 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
     // Remove from IP tracking
     const conns = ipWsConnections.get(clientIp);
     if (conns) {
@@ -1551,13 +1883,98 @@ wss.on('connection', (ws, req) => {
 
         room.participants.delete(currentClientId);
 
-        // Notify remaining participants of temporary disconnect (presence becomes waiting/offline)
-        for (const pWs of room.participants.values()) {
-          if (pWs.readyState === WebSocket.OPEN) {
-            pWs.send(JSON.stringify({
-              type: 'peer_left',
-              participantsCount: room.participants.size
-            }));
+        if (!room.leftClientIds) room.leftClientIds = new Set();
+
+        const isTwoParticipantSession = room.hadTwoParticipants || room.participantHistory?.size >= 2;
+
+        if (isTwoParticipantSession) {
+          const isIntentional = ws.isIntentionalLeave || code === 1001;
+
+          if (isIntentional) {
+            // Actual page reload, tab close, or intentional leave:
+            // Clear any pending disconnect timer for this client
+            if (room.disconnectTimers?.has(currentClientId)) {
+              clearTimeout(room.disconnectTimers.get(currentClientId));
+              room.disconnectTimers.delete(currentClientId);
+            }
+
+            // If departure has not been marked yet, this participant disconnecting is the authoritative departure
+            if (!room.peerLeftStatus) {
+              room.leftClientIds.add(currentClientId);
+              const leaveTimestamp = Date.now();
+              room.peerLeftStatus = {
+                text: 'User left the session',
+                timestamp: leaveTimestamp,
+                departedClientId: currentClientId
+              };
+
+              // Authoritatively notify remaining participants of permanent departure immediately
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left_permanent',
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp
+                  }));
+                }
+              }
+            }
+          } else {
+            // Temporary network interruption (e.g. Wi-Fi drop, brief TCP reset):
+            // Allow 30-second reconnection grace period without immediate permanent departure
+            if (!room.peerLeftStatus && !room.leftClientIds.has(currentClientId)) {
+              if (room.disconnectTimers?.has(currentClientId)) {
+                clearTimeout(room.disconnectTimers.get(currentClientId));
+              }
+
+              const timer = setTimeout(() => {
+                room.disconnectTimers.delete(currentClientId);
+                // Grace period elapsed without reconnection: authoritatively mark permanent departure
+                if (!room.peerLeftStatus && !room.leftClientIds.has(currentClientId)) {
+                  room.leftClientIds.add(currentClientId);
+                  const leaveTimestamp = Date.now();
+                  room.peerLeftStatus = {
+                    text: 'User left the session',
+                    timestamp: leaveTimestamp,
+                    departedClientId: currentClientId
+                  };
+
+                  for (const pWs of room.participants.values()) {
+                    if (pWs.readyState === WebSocket.OPEN) {
+                      pWs.send(JSON.stringify({
+                        type: 'peer_left_permanent',
+                        text: 'User left the session',
+                        timestamp: leaveTimestamp
+                      }));
+                    }
+                  }
+                }
+              }, RECONNECT_GRACE_PERIOD_MS);
+
+              room.disconnectTimers.set(currentClientId, timer);
+
+              // Notify remaining participants of temporary disconnect (presence offline/waiting)
+              for (const pWs of room.participants.values()) {
+                if (pWs.readyState === WebSocket.OPEN) {
+                  pWs.send(JSON.stringify({
+                    type: 'peer_left',
+                    participantsCount: room.participants.size,
+                    temporary: true,
+                    gracePeriodMs: RECONNECT_GRACE_PERIOD_MS
+                  }));
+                }
+              }
+            }
+          }
+        } else {
+          // Creator waiting alone or 1 participant before peer joined
+          for (const pWs of room.participants.values()) {
+            if (pWs.readyState === WebSocket.OPEN) {
+              pWs.send(JSON.stringify({
+                type: 'peer_left',
+                participantsCount: room.participants.size
+              }));
+            }
           }
         }
       }

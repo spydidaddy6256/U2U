@@ -63,8 +63,32 @@ export default function NativeAppLauncher({
 
   const renderAvatar = (avatarKey, name) => {
     if (!avatarKey) return <User size={22} />;
-    if (avatarKey.startsWith('data:')) {
-      return <img src={avatarKey} alt={name || 'Avatar'} className="launcher-profile-avatar-img" />;
+    const isImage = typeof avatarKey === 'string' && (
+      avatarKey.startsWith('data:') ||
+      avatarKey.startsWith('http://') ||
+      avatarKey.startsWith('https://') ||
+      avatarKey.startsWith('blob:')
+    );
+    if (isImage) {
+      return (
+        <>
+          <img
+            src={avatarKey}
+            alt={name || 'Avatar'}
+            className="launcher-profile-avatar-img"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+          <div
+            className="launcher-profile-avatar-svg launcher-avatar-fallback"
+            style={{ display: 'none', width: '100%', height: '100%' }}
+            dangerouslySetInnerHTML={{ __html: getAvatarSvg('neon-neko') }}
+          />
+        </>
+      );
     }
     return (
       <div

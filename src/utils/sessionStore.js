@@ -39,6 +39,8 @@ export function saveActiveSession(sessionData) {
       authTicket: sessionData.authTicket || '',
       joinToken: sessionData.joinToken || '',
       view: sessionData.view || 'chat',
+      selfIdentity: sessionData.selfIdentity || undefined,
+      peerIdentity: sessionData.peerIdentity || undefined,
       updatedAt: Date.now()
     }));
   } catch {}

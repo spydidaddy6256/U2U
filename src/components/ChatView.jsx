@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, ArrowUp, Image as ImageIcon,
-  AlertCircle, ChevronDown, Mic, WifiOff,
+  AlertCircle, AlertTriangle, ChevronDown, Clock, Mic, WifiOff,
   MoreHorizontal, Smile
 } from 'lucide-react';
 import { encryptPayload, decryptPayload, compressImage } from '../utils/crypto';
@@ -24,7 +24,7 @@ import {
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
 import { isAndroidPlatform } from '../utils/platform';
-import { getWsUrl, isNativeAndroid } from '../utils/apiConfig';
+import { getWsUrl, getApiUrl } from '../utils/apiConfig';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
@@ -74,7 +74,7 @@ export default function ChatView({
   onRevealHeader,
   selfIdentity,
   onPeerIdentityChange,
-  onScrollDirectionChange,
+  _onScrollDirectionChange,
 }) {
   const [messages, setMessages] = useState([]);
   const [systemMessages, setSystemMessages] = useState([]);
@@ -104,6 +104,46 @@ export default function ChatView({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionPickerTarget, setReactionPickerTarget] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [spamWarning, setSpamWarning] = useState('');
+  const [spamCooldown, setSpamCooldown] = useState(null); // { active: boolean, expiresAt: number, remainingSeconds: number }
+  const spamWarningTimerRef = useRef(null);
+  const [peerLeftPermanently, setPeerLeftPermanently] = useState(false);
+  const peerLeftPermanentlyRef = useRef(false);
+  useEffect(() => {
+    peerLeftPermanentlyRef.current = peerLeftPermanently;
+  }, [peerLeftPermanently]);
+
+  // Handle browser lifecycle events (pagehide, beforeunload)
+  useEffect(() => {
+    const handlePageUnload = () => {
+      // If the peer has already permanently left, this client is Participant B reloading
+      // Do NOT send leave_session or clear session storage
+      if (peerLeftPermanentlyRef.current) {
+        return;
+      }
+
+      // If both participants were present (or we are in active session), this client is leaving
+      try {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({ type: 'leave_session' }));
+          socketRef.current.close(1001, 'Going Away');
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          const blob = new Blob([JSON.stringify({ sessionId, clientId })], { type: 'application/json' });
+          navigator.sendBeacon(getApiUrl('/api/session/leave'), blob);
+        }
+        sessionStorage.removeItem('u2u-active-session');
+      } catch {}
+    };
+
+    window.addEventListener('pagehide', handlePageUnload);
+    window.addEventListener('beforeunload', handlePageUnload);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageUnload);
+      window.removeEventListener('beforeunload', handlePageUnload);
+    };
+  }, [sessionId, clientId]);
 
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -119,15 +159,54 @@ export default function ChatView({
   const selfIdentityRef = useRef(selfIdentity);
   useEffect(() => {
     selfIdentityRef.current = selfIdentity;
-  }, [selfIdentity]);
+    if (selfIdentity && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'identity',
+        sessionId,
+        clientId,
+        identity: selfIdentity
+      }));
+    }
+  }, [selfIdentity, sessionId, clientId]);
 
-  // Notify header reveal on chat mount for mobile compatibility
+  // Pull-down reveal gesture for Android chat header
+  const pullTouchStartYRef = useRef(null);
+  const pullTouchStartXRef = useRef(null);
+  const canPullHeaderRef = useRef(false);
+
+  // Start Android chat header auto-hide behavior when active chat screen mounts
   useEffect(() => {
     if (isAndroidPlatform()) {
       onRevealHeader?.();
     }
   }, [onRevealHeader]);
 
+  const handlePullStart = (clientY, clientX) => {
+    if (!isAndroidPlatform() || !onRevealHeader) return;
+    pullTouchStartYRef.current = clientY;
+    pullTouchStartXRef.current = clientX;
+    const vp = viewportRef.current;
+    const isAtTop = !vp || vp.scrollTop <= 20;
+    const isNearTop = clientY <= 220;
+    canPullHeaderRef.current = isAtTop || isNearTop;
+  };
+
+  const handlePullMove = (clientY, clientX) => {
+    if (!canPullHeaderRef.current || pullTouchStartYRef.current === null || !onRevealHeader) return;
+    const deltaY = clientY - pullTouchStartYRef.current;
+    const deltaX = clientX - (pullTouchStartXRef.current || clientX);
+    if (deltaY > 25 && deltaY > Math.abs(deltaX) * 1.2) {
+      onRevealHeader();
+      canPullHeaderRef.current = false;
+      pullTouchStartYRef.current = null;
+    }
+  };
+
+  const handlePullEnd = () => {
+    pullTouchStartYRef.current = null;
+    pullTouchStartXRef.current = null;
+    canPullHeaderRef.current = false;
+  };
   // Track message IDs we've already sent a 'seen' ack for (idempotency)
   const seenMessageIdsRef = useRef(new Set());
   // Ref to always have the latest socket without recreating the observer
@@ -176,29 +255,16 @@ export default function ChatView({
     }
   }, []);
 
-  const lastScrollTopRef = useRef(0);
   const handleScroll = useCallback(() => {
     if (isAutoScrollingRef.current) return;
     const vp = viewportRef.current;
     if (!vp) return;
     const currentScrollTop = vp.scrollTop;
-    const delta = currentScrollTop - lastScrollTopRef.current;
-
-    // Filter minor jitter; notify on noticeable up or down scroll
-    if (Math.abs(delta) > 12) {
-      if (delta > 0 && currentScrollTop > 40) {
-        onScrollDirectionChange?.('down');
-      } else if (delta < 0) {
-        onScrollDirectionChange?.('up');
-      }
-      lastScrollTopRef.current = currentScrollTop;
-    }
-
     const distFromBottom = vp.scrollHeight - currentScrollTop - vp.clientHeight;
     const atBottom = distFromBottom < 80;
     setIsAtBottom(atBottom);
     if (atBottom) setNewMsgCount(0);
-  }, [onScrollDirectionChange]);
+  }, []);
 
   // Photo timers tick effect
   useEffect(() => {
@@ -236,6 +302,33 @@ export default function ChatView({
     return () => clearInterval(interval);
   }, []);
 
+  // Synchronized spam cooldown countdown timer
+  const cooldownExpiresAt = spamCooldown?.expiresAt;
+  const isCooldownActive = Boolean(spamCooldown?.active);
+
+  useEffect(() => {
+    if (!isCooldownActive || !cooldownExpiresAt) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const secLeft = Math.max(0, Math.ceil((cooldownExpiresAt - now) / 1000));
+      if (secLeft <= 0) {
+        setSpamCooldown(null);
+        clearInterval(interval);
+      } else {
+        setSpamCooldown(prev => prev && prev.active ? { ...prev, remainingSeconds: secLeft } : null);
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [isCooldownActive, cooldownExpiresAt]);
+
+  useEffect(() => {
+    return () => {
+      if (spamWarningTimerRef.current) clearTimeout(spamWarningTimerRef.current);
+    };
+  }, []);
+
   // Close attachment menu on outside click
   useEffect(() => {
     function handleClickOutside(e) {
@@ -270,8 +363,30 @@ export default function ChatView({
           setVoiceTimers({});
         }
 
+        // Active spam cooldown synchronization across reconnects
+        if (data.spamCooldown && data.spamCooldown.active) {
+          const expiresAt = data.spamCooldown.expiresAt;
+          const remainingSeconds = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+          setSpamCooldown({
+            active: true,
+            expiresAt,
+            remainingSeconds,
+            message: data.spamCooldown.message || 'Spam detected. Messaging paused.'
+          });
+          setSpamWarning('');
+        }
+
+        // Synchronize peer identities from room
+        if (data.peerIdentities && typeof data.peerIdentities === 'object') {
+          for (const [id, iden] of Object.entries(data.peerIdentities)) {
+            if (id !== clientId && iden) {
+              onPeerIdentityChange?.(iden);
+            }
+          }
+        }
+
         // Accurate presence & removal of transient departure notices
-        if (data.participantsCount >= 2) {
+        if (data.participantsCount >= 2 && !data.peerLeftStatus) {
           peerPresentRef.current = true;
           setPeerPresent(true);
           setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
@@ -283,6 +398,8 @@ export default function ChatView({
 
         // Authoritative permanent participant-left status only if peer intentionally left and isn't present
         if (data.peerLeftStatus && data.participantsCount < 2) {
+          peerLeftPermanentlyRef.current = true;
+          setPeerLeftPermanently(true);
           const text = data.peerLeftStatus.text || 'User left the session';
           const timestamp = data.peerLeftStatus.timestamp || Date.now();
           setSystemMessages(prev => {
@@ -367,9 +484,13 @@ export default function ChatView({
 
       case 'peer_joined':
       case 'peer_present': {
+        if (peerLeftPermanentlyRef.current) break;
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = true;
         setPeerPresent(true);
+        if (data.identity) {
+          onPeerIdentityChange?.(data.identity);
+        }
         // Clear any previous "User left the session" notice when peer is actively back
         setSystemMessages(prev => prev.filter(m => !m.text.includes('left the session')));
         if (!wasPresent) {
@@ -383,8 +504,23 @@ export default function ChatView({
         const wasPresent = peerPresentRef.current;
         peerPresentRef.current = false;
         setPeerPresent(false);
-        if (wasPresent) {
-          playUserLeftSound();
+        if (data.permanent || data.peerLeftStatus) {
+          const alreadyLeft = peerLeftPermanentlyRef.current;
+          peerLeftPermanentlyRef.current = true;
+          setPeerLeftPermanently(true);
+          const text = (data.peerLeftStatus && data.peerLeftStatus.text) || data.text || 'User left the session';
+          const timestamp = (data.peerLeftStatus && data.peerLeftStatus.timestamp) || data.timestamp || Date.now();
+          setSystemMessages(prev => {
+            if (prev.some(m => m.text === text)) return prev;
+            return [...prev, { id: 'peer-left-' + timestamp, text, timestamp }];
+          });
+          if (wasPresent && !alreadyLeft) {
+            playUserLeftSound();
+          }
+        } else {
+          if (wasPresent && !peerLeftPermanentlyRef.current) {
+            playUserLeftSound();
+          }
         }
         break;
       }
@@ -392,8 +528,11 @@ export default function ChatView({
       case 'peer_left_permanent':
       case 'peer_left_intentional': {
         const wasPresent = peerPresentRef.current;
+        const alreadyLeft = peerLeftPermanentlyRef.current;
         peerPresentRef.current = false;
         setPeerPresent(false);
+        peerLeftPermanentlyRef.current = true;
+        setPeerLeftPermanently(true);
         const text = data.text || 'User left the session';
         const timestamp = data.timestamp || Date.now();
         setSystemMessages(prev => {
@@ -404,7 +543,7 @@ export default function ChatView({
             timestamp
           }];
         });
-        if (wasPresent) {
+        if (wasPresent && !alreadyLeft) {
           playUserLeftSound();
         }
         break;
@@ -631,6 +770,40 @@ export default function ChatView({
         break;
       }
 
+      case 'spam_warning': {
+        const warningMsg = data.message || "You're sending messages too quickly. Please slow down.";
+        setSpamWarning(warningMsg);
+        if (spamWarningTimerRef.current) clearTimeout(spamWarningTimerRef.current);
+        spamWarningTimerRef.current = setTimeout(() => {
+          setSpamWarning('');
+        }, 6000);
+        break;
+      }
+
+      case 'spam_cooldown': {
+        if (data.active) {
+          const expiresAt = data.expiresAt || (Date.now() + (data.duration || 10) * 1000);
+          const remainingSeconds = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+          setSpamCooldown({
+            active: true,
+            expiresAt,
+            remainingSeconds,
+            message: data.message || "Spam detected. Messaging paused."
+          });
+          setSpamWarning('');
+          setIsRecording(false);
+          setAttachmentMenuOpen(false);
+        } else {
+          setSpamCooldown(null);
+        }
+        break;
+      }
+
+      case 'spam_cooldown_expired': {
+        setSpamCooldown(null);
+        break;
+      }
+
       case 'error': {
         if (data.code === 'INVALID_TICKET') {
           if (onRefreshTicket) {
@@ -717,7 +890,8 @@ export default function ChatView({
           type: 'join',
           sessionId,
           ticket: authTicketRef.current || authTicket,
-          clientId
+          clientId,
+          identity: selfIdentityRef.current || undefined
         }));
         if (selfIdentityRef.current) {
           ws.send(JSON.stringify({
@@ -838,13 +1012,15 @@ export default function ChatView({
     }
   }, [selfIdentity, sessionId, clientId]);
 
-  // On initial chat entry with messages, scroll to the bottom so the latest messages are immediately visible
+  // On initial chat entry or session re-entry, show the beginning/top of the conversation
   const initialScrollDoneRef = useRef(false);
   useEffect(() => {
-    if (!initialScrollDoneRef.current && viewportRef.current && messages.length > 0) {
+    if (!initialScrollDoneRef.current && viewportRef.current) {
       initialScrollDoneRef.current = true;
-      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
-      setIsAtBottom(true);
+      viewportRef.current.scrollTop = 0;
+      const vp = viewportRef.current;
+      const dist = vp.scrollHeight - vp.scrollTop - vp.clientHeight;
+      setIsAtBottom(dist < 80);
     }
   }, [messages.length]);
 
@@ -959,6 +1135,11 @@ export default function ChatView({
 
   // Send text message
   const handleSendMessage = async () => {
+    if (spamCooldown?.active) return;
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     const text = inputText.trim();
     if (!text || !cryptoKey) return;
 
@@ -1001,7 +1182,9 @@ export default function ChatView({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      if (!spamCooldown?.active) {
+        handleSendMessage();
+      }
     }
   };
 
@@ -1023,6 +1206,11 @@ export default function ChatView({
 
   // Send encrypted voice note
   const handleSendVoiceNote = async (audioBlob, duration) => {
+    if (spamCooldown?.active) return;
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     if (!cryptoKey || !audioBlob) return;
 
     const voiceId = `voice-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1097,6 +1285,11 @@ export default function ChatView({
 
   // Send encrypted photo
   const handleSendPhoto = async ({ dataUrl, isViewOnce }) => {
+    if (spamCooldown?.active) return;
+    if (peerLeftPermanentlyRef.current) {
+      onToast?.('User has left the session');
+      return;
+    }
     const photoId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const now = Date.now();
     const currentReply = replyingTo ? {
@@ -1314,9 +1507,19 @@ export default function ChatView({
 
   // Leave session
   const handleLeave = () => {
-    socketRef.current?.send(JSON.stringify({
-      type: 'leave_session', sessionId, clientId
-    }));
+    try {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: 'leave_session', sessionId, clientId
+        }));
+        socketRef.current.close(1001, 'Going Away');
+      }
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const blob = new Blob([JSON.stringify({ sessionId, clientId })], { type: 'application/json' });
+        navigator.sendBeacon(getApiUrl('/api/session/leave'), blob);
+      }
+      sessionStorage.removeItem('u2u-active-session');
+    } catch {}
     setTimeout(() => onLeave(), 100);
   };
 
@@ -1331,24 +1534,77 @@ export default function ChatView({
     );
   }
 
+  // Helper to extract reliable numerical timestamp from message or system item
+  const getTimestamp = (item) => {
+    if (typeof item?.timestamp === 'number' && !isNaN(item.timestamp)) return item.timestamp;
+    if (typeof item?.timestamp === 'string') {
+      const parsed = Date.parse(item.timestamp);
+      if (!isNaN(parsed)) return parsed;
+      const num = Number(item.timestamp);
+      if (!isNaN(num)) return num;
+    }
+    if (item?.timestamp instanceof Date) return item.timestamp.getTime();
+    return 0;
+  };
+
   // Merge messages and system messages in continuous chronological order
-  const allItems = [
-    ...messages
-      .filter(m => !m.isUnsent && !(m.type === 'voice' && (m.isExpired || (voiceTimers[m.id] && voiceTimers[m.id].secondsLeft <= 0))))
-      .map(m => ({ ...m, itemType: 'message' })),
-    ...systemMessages.map(s => ({ ...s, itemType: 'system' }))
-  ].sort((a, b) => {
-    const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
-    const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+  const rawMessages = messages
+    .filter(m => !m.isUnsent && !(m.type === 'voice' && (m.isExpired || (voiceTimers[m.id] && voiceTimers[m.id].secondsLeft <= 0))))
+    .map(m => ({ ...m, itemType: 'message' }));
+
+  // Find latest message timestamp so departure notice is never placed above or before prior messages
+  let maxMessageTime = 0;
+  for (const m of rawMessages) {
+    const t = getTimestamp(m);
+    if (t > maxMessageTime) maxMessageTime = t;
+  }
+
+  const rawSystem = systemMessages.map(s => {
+    let t = getTimestamp(s);
+    // If this is a departure notice and prior messages exist, place it immediately after the last message
+    if (s.text?.includes('left the session') && maxMessageTime > 0 && t <= maxMessageTime) {
+      t = maxMessageTime + 1;
+    }
+    return { ...s, timestamp: t, itemType: 'system' };
+  });
+
+  const allItems = [...rawMessages, ...rawSystem].sort((a, b) => {
+    const timeA = getTimestamp(a);
+    const timeB = getTimestamp(b);
     if (timeA !== timeB) return timeA - timeB;
+    // Tie-breaker: normal messages precede system notices at the same timestamp
+    if (a.itemType === 'message' && b.itemType === 'system') return -1;
+    if (a.itemType === 'system' && b.itemType === 'message') return 1;
     return String(a.id || '').localeCompare(String(b.id || ''));
   });
 
   const isAndroidChat = isAndroidPlatform();
-  const isNative = isNativeAndroid();
 
   return (
     <div className={`chat-container ${isAndroidChat ? 'chat-android-header-active' : ''}`}>
+      {/* Invisible top touch target to trigger header reveal when pulled/tapped near top */}
+      {isAndroidChat && (
+        <div
+          className="chat-header-pull-trigger"
+          onTouchStart={(e) => {
+            const t = e.touches?.[0];
+            if (t) handlePullStart(t.clientY, t.clientX);
+          }}
+          onTouchMove={(e) => {
+            const t = e.touches?.[0];
+            if (t) handlePullMove(t.clientY, t.clientX);
+          }}
+          onTouchEnd={handlePullEnd}
+          onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
+          onPointerMove={(e) => {
+            if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
+          }}
+          onPointerUp={handlePullEnd}
+          onClick={onRevealHeader}
+          aria-hidden="true"
+        />
+      )}
+
       {connectionStatus === 'reconnecting' && (
         <div className="connection-banner">
           <WifiOff size={14} style={{ color: 'var(--status-warning)' }} />
@@ -1356,20 +1612,26 @@ export default function ChatView({
         </div>
       )}
 
-      {/* Messages area — Native Touch Scrolling */}
+      {/* Messages area */}
       <div
         className="messages-viewport"
         ref={viewportRef}
         onScroll={handleScroll}
+        onTouchStart={(e) => {
+          const t = e.touches?.[0];
+          if (t) handlePullStart(t.clientY, t.clientX);
+        }}
+        onTouchMove={(e) => {
+          const t = e.touches?.[0];
+          if (t) handlePullMove(t.clientY, t.clientX);
+        }}
+        onTouchEnd={handlePullEnd}
+        onPointerDown={(e) => handlePullStart(e.clientY, e.clientX)}
+        onPointerMove={(e) => {
+          if (e.buttons > 0) handlePullMove(e.clientY, e.clientX);
+        }}
+        onPointerUp={handlePullEnd}
       >
-        {/* Stationary Native Android Encryption Pill */}
-        {isNative && (
-          <div className="native-chat-encryption-row">
-            <div className="native-chat-encryption-pill">
-              Encrypted on your device · Today
-            </div>
-          </div>
-        )}
         {allItems.length === 0 ? (
           <div className="chat-empty-state">
             <div className="empty-state-icon">
@@ -1471,20 +1733,6 @@ export default function ChatView({
                         onPlaybackEnded={handleVoicePlaybackEnded}
                       />
                     )}
-
-                    {/* Native inline timestamp & receipt inside bubble */}
-                    <div
-                      className="native-bubble-meta"
-                      aria-label={`Sent ${formatFullTime(msg.timestamp)}${isSelf ? `, status ${msg.status}` : ''}`}
-                    >
-                      <span className="native-bubble-time">{formatContextualTime(msg.timestamp)}</span>
-                      {isSelf && (
-                        <MessageStatus status={msg.status} seenAt={msg.seenAt} />
-                      )}
-                      {msg.status === 'error' && (
-                        <AlertCircle size={11} style={{ color: 'var(--coral)', marginLeft: 2 }} aria-label="Send failed" />
-                      )}
-                    </div>
                   </div>
 
                   {/* Three-dot button for peer message (right of bubble) */}
@@ -1606,6 +1854,25 @@ export default function ChatView({
 
       {/* Composer */}
       <div className="composer-wrapper" style={{ position: 'relative' }}>
+        {/* Anti-Spam Stage One Warning Banner */}
+        {spamWarning && (
+          <div className="spam-warning-banner" role="alert" aria-live="assertive">
+            <AlertTriangle size={15} className="spam-warning-icon" />
+            <span className="spam-warning-text">{spamWarning}</span>
+          </div>
+        )}
+
+        {/* Anti-Spam Stage Two Cooldown Banner */}
+        {spamCooldown?.active && (
+          <div className="spam-cooldown-banner" role="alert" aria-live="assertive">
+            <div className="spam-cooldown-content">
+              <Clock size={15} className="spam-cooldown-icon" />
+              <span className="spam-cooldown-text">{spamCooldown.message || 'Spam detected. Messaging paused.'}</span>
+            </div>
+            <span className="spam-cooldown-timer">{spamCooldown.remainingSeconds ?? 10}s</span>
+          </div>
+        )}
+
         {/* Reply Preview Bar above Composer */}
         <ComposerReplyBar
           replyingTo={replyingTo}
@@ -1614,7 +1881,7 @@ export default function ChatView({
         />
 
         {/* Attachment popover */}
-        {!isRecording && attachmentMenuOpen && (
+        {!isRecording && attachmentMenuOpen && !spamCooldown?.active && (
           <div className="attachment-popover" ref={attachmentMenuRef}>
             <button className="attachment-item-btn" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon size={16} style={{ color: 'var(--accent)' }} />
@@ -1635,26 +1902,31 @@ export default function ChatView({
             }}
           />
         ) : (
-          <div className="composer-bar">
-            {/* 1. Attachment button */}
+          <div className={`composer-bar ${spamCooldown?.active ? 'cooldown-active' : ''}`}>
             <button
               className="composer-add-btn"
-              onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)}
-              title="Add photo"
+              onClick={() => {
+                if (peerLeftPermanently || spamCooldown?.active) return;
+                setAttachmentMenuOpen(!attachmentMenuOpen);
+              }}
+              title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Add photo')}
               aria-label="Add attachment"
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
               <Plus size={19} />
             </button>
 
-            {/* 2. Text input */}
             <textarea
               ref={textareaRef}
               className="composer-input"
-              placeholder={isNative ? "Message" : "Write a message…"}
+              placeholder={spamCooldown?.active ? `Messaging paused (${spamCooldown.remainingSeconds ?? 10}s)…` : (peerLeftPermanently ? 'User left the session' : 'Write a message…')}
               rows={1}
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
               autoComplete="on"
               autoCorrect="on"
               autoCapitalize="sentences"
@@ -1662,39 +1934,51 @@ export default function ChatView({
               enterKeyHint="send"
             />
 
-            {/* 3. Dedicated U2U Emoji Picker Button */}
+            {/* Dedicated U2U Emoji Picker Button */}
             <button
               type="button"
               className={`composer-emoji-btn ${emojiPickerOpen ? 'active' : ''}`}
-              onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
-              title="U2U Emojis"
+              onClick={() => {
+                if (peerLeftPermanently || spamCooldown?.active) return;
+                setEmojiPickerOpen(!emojiPickerOpen);
+              }}
+              title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'U2U Emojis')}
               aria-label="Open U2U emoji picker"
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
-              <Smile size={19} />
+              <Smile size={18} />
             </button>
 
-            {/* 4. Mic button — active when input is empty */}
+            {/* Mic button — shown when input is empty */}
             {!inputText.trim() && (
               <button
-                type="button"
                 className="composer-mic-btn"
-                onClick={() => setIsRecording(true)}
-                title="Send a voice note"
+                onClick={() => {
+                  if (peerLeftPermanently || spamCooldown?.active) return;
+                  setIsRecording(true);
+                }}
+                title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Send a voice note')}
                 aria-label="Record voice note"
+                disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+                style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
               >
-                <Mic size={19} />
+                <Mic size={18} />
               </button>
             )}
 
-            {/* 5. Send button — active when input has text */}
+            {/* Send button — shown when there is text */}
             {inputText.trim() && (
               <button
-                type="button"
                 className="composer-send-btn"
-                onClick={handleSendMessage}
-                disabled={!inputText.trim()}
-                title="Send message"
+                onClick={() => {
+                  if (peerLeftPermanently || spamCooldown?.active) return;
+                  handleSendMessage();
+                }}
+                title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Send message')}
                 aria-label="Send"
+                disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+                style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               >
                 <ArrowUp size={18} />
               </button>

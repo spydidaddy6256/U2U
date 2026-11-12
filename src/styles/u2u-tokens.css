@@ -639,6 +639,173 @@ html.u2u-native .modal-actions-footer .btn-secondary:active {
   color: var(--text) !important;
 }
 
+/* ── Native Send Photo Confirmation Bottom Sheet ── */
+html.u2u-native .photo-send-dialog {
+  padding: 0 20px calc(18px + var(--native-bottom-clear)) 20px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 90dvh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+}
+
+html.u2u-native .photo-send-dialog .modal-close-btn {
+  position: absolute !important;
+  top: 14px !important;
+  right: 16px !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--muted) !important;
+  background: var(--surface-2) !important;
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  z-index: 10 !important;
+}
+
+html.u2u-native .photo-send-dialog .modal-title {
+  padding: 4px 0 0 0 !important;
+  margin: 0 0 12px 0 !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  text-align: center !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-preview-frame {
+  width: 100% !important;
+  max-height: 200px !important;
+  min-height: 120px !important;
+  border-radius: 16px !important;
+  background: #0a0b0e !important;
+  border: 1px solid var(--border) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 0 12px 0 !important;
+  overflow: hidden !important;
+  flex-shrink: 1 !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-preview-img {
+  max-width: 100% !important;
+  max-height: 200px !important;
+  object-fit: contain !important;
+  border-radius: 14px !important;
+}
+
+html.u2u-native .photo-send-dialog .view-once-toggle-card {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 10px 14px !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  margin: 0 0 10px 0 !important;
+  box-sizing: border-box !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  touch-action: manipulation !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .photo-send-dialog .view-once-toggle-card.active {
+  background: rgba(224, 94, 70, 0.12) !important;
+  border-color: rgba(224, 94, 70, 0.45) !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-encryption-notice {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  margin: 0 0 14px 0 !important;
+  line-height: 1.35 !important;
+  text-align: center !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-encryption-icon {
+  color: var(--status-connected, #2ecc71) !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-modal-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
+  margin-top: auto !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-modal-actions .btn {
+  flex: 1 !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  touch-action: manipulation !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-modal-actions .btn-secondary {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+html.u2u-native .photo-send-dialog .photo-modal-actions .btn-primary {
+  background: var(--accent, #e05e46) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+@media (max-height: 640px) {
+  html.u2u-native .photo-send-dialog {
+    max-height: 94dvh !important;
+    padding-bottom: calc(12px + var(--native-bottom-clear)) !important;
+  }
+  html.u2u-native .photo-send-dialog .photo-preview-frame {
+    max-height: 130px !important;
+    min-height: 80px !important;
+    margin-bottom: 8px !important;
+  }
+  html.u2u-native .photo-send-dialog .modal-title {
+    margin-bottom: 8px !important;
+    font-size: 16px !important;
+  }
+  html.u2u-native .photo-send-dialog .view-once-toggle-card {
+    padding: 8px 12px !important;
+    margin-bottom: 8px !important;
+  }
+  html.u2u-native .photo-send-dialog .photo-encryption-notice {
+    margin-bottom: 10px !important;
+    font-size: 11px !important;
+  }
+  html.u2u-native .photo-send-dialog .photo-modal-actions .btn {
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
 /* Keyframe Animations */
 @keyframes nativeScrimFadeIn {
   from { opacity: 0; }
@@ -717,10 +884,24 @@ html.u2u-native .native-peer-avatar-circle {
 }
 
 html.u2u-native .native-peer-avatar-circle img,
-html.u2u-native .native-peer-avatar-circle svg {
+html.u2u-native .native-peer-avatar-circle svg,
+html.u2u-native .native-peer-avatar-circle .identity-avatar-img,
+html.u2u-native .native-peer-avatar-circle .identity-avatar-svg,
+html.u2u-native .native-peer-avatar-circle .identity-avatar-wrapper,
+html.u2u-native .native-peer-avatar-circle .identity-avatar-placeholder {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.u2u-native .native-peer-avatar-circle .identity-avatar-svg svg {
+  width: 100%;
+  height: 100%;
 }
 
 html.u2u-native .native-peer-meta {
@@ -782,6 +963,60 @@ html.u2u-native .native-header-burn-btn {
 html.u2u-native .native-header-burn-btn:active {
   transform: scale(0.96);
   background: rgba(224, 94, 70, 0.22);
+}
+
+/* Native Chat Header Actions (Burn pill + 3-dot options menu) */
+html.u2u-native .native-chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+html.u2u-native .native-chat-menu-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.15s ease-out, background 0.15s ease-out;
+  touch-action: manipulation;
+}
+
+html.u2u-native .native-chat-menu-btn:active,
+html.u2u-native .native-chat-menu-btn.active {
+  background: var(--surface-2);
+  transform: scale(0.96);
+  border-color: var(--accent);
+}
+
+/* Ensure dropdown menu is anchored cleanly under the 3-dot button on native */
+html.u2u-native .native-chat-header-actions .dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 215px;
+  max-width: calc(100vw - 24px);
+  z-index: 1000;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45);
+}
+
+html.u2u-native .native-chat-header-actions .dropdown-item {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* 2. Shared Native Cards */
@@ -1776,6 +2011,7 @@ html.u2u-native .create-profile-modal .wizard-description {
   margin: 0 0 12px 0 !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 3 !important;
+  line-clamp: 3 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
 }
@@ -1958,6 +2194,7 @@ html.u2u-native .create-profile-modal .avatar-grid-item .avatar-thumb-name {
   text-align: center !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -2137,10 +2374,13 @@ html.u2u-native .create-profile-modal .key-confirm-textarea {
 html.u2u-native .identity-selection-wrapper {
   background: var(--bg) !important;
   padding: 0 !important;
-  min-height: 100% !important;
   height: 100% !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
   display: flex !important;
   flex-direction: column !important;
   position: relative !important;
@@ -2156,7 +2396,8 @@ html.u2u-native .identity-card {
   width: 100% !important;
   max-width: 100% !important;
   margin: 0 !important;
-  flex: 1 !important;
+  min-height: 100% !important;
+  flex: 1 0 auto !important;
   display: flex !important;
   flex-direction: column !important;
   box-sizing: border-box !important;
@@ -2246,11 +2487,12 @@ html.u2u-native .avatar-preview-label {
 /* Whole page scrolls as one surface: form padding and layout */
 html.u2u-native .identity-form {
   padding: 0 !important;
-  flex: 1 !important;
+  flex: 1 0 auto !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 16px !important;
-  padding-bottom: 72px !important;
+  padding-bottom: 0 !important;
+  box-sizing: border-box !important;
 }
 
 /* "Anonymous Display Name" label on the left and the counter "14/24" on the right, 12px muted, one line, 8px above the input */
@@ -2368,6 +2610,17 @@ html.u2u-native .identity-card .avatar-grid {
   max-height: none !important;
   overflow: visible !important;
   padding: 0 !important;
+  margin-bottom: 16px !important;
+}
+
+html.u2u-native .identity-card .field-group {
+  margin-bottom: 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+html.u2u-native .upload-dropzone {
+  margin-bottom: 16px !important;
 }
 
 @media (max-width: 360px) {
@@ -2426,6 +2679,7 @@ html.u2u-native .identity-card .avatar-grid-item .avatar-thumb-name {
   text-align: center !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -2453,6 +2707,7 @@ html.u2u-native .custom-uploaded-card {
   border: 1px solid var(--border) !important;
   border-radius: 16px !important;
   box-sizing: border-box !important;
+  margin-bottom: 16px !important;
 }
 
 html.u2u-native .custom-uploaded-row1 {
@@ -2523,7 +2778,7 @@ html.u2u-native .custom-uploaded-card .btn {
   box-sizing: border-box !important;
 }
 
-/* Primary "Continue" button 48px, sticky at the bottom with the footer rules from item 3 */
+/* Primary "Continue" button 48px, sticky at the bottom with safe-area spacing and zero overlap */
 html.u2u-native .identity-actions {
   position: sticky !important;
   bottom: 0 !important;
@@ -2532,12 +2787,14 @@ html.u2u-native .identity-actions {
   margin-top: auto !important;
   margin-left: -16px !important;
   margin-right: -16px !important;
-  margin-bottom: -72px !important;
-  padding: 8px 16px var(--native-bottom-clear) 16px !important;
+  margin-bottom: 0 !important;
+  padding: 10px 16px calc(10px + var(--native-bottom-clear)) 16px !important;
   background: var(--bg) !important;
   border-top: 1px solid var(--border) !important;
   z-index: 20 !important;
   box-sizing: border-box !important;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45) !important;
+  flex-shrink: 0 !important;
 }
 
 html.u2u-native .identity-actions .btn-primary {
@@ -2935,6 +3192,176 @@ html.u2u-native .launch-logo-base-image {
   max-height: 160px !important;
   mix-blend-mode: normal !important;
   display: block !important;
+}
+
+/* ==========================================================================
+   Avatar Crop Modal (Native Android Profile Picture Cropper)
+   ========================================================================== */
+.avatar-crop-backdrop {
+  z-index: 12000 !important;
+  background: rgba(0, 0, 0, 0.85) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.avatar-crop-modal {
+  width: 92% !important;
+  max-width: 380px !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg, 16px) !important;
+  padding: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  animation: modalPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.avatar-crop-subtitle {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+  margin: -6px 0 8px 0 !important;
+  text-align: center !important;
+}
+
+.avatar-crop-modal-body {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+.avatar-crop-viewport {
+  width: 280px !important;
+  height: 280px !important;
+  position: relative !important;
+  background: #0d0e12 !important;
+  border-radius: var(--radius-md, 12px) !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+  cursor: grab !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+.avatar-crop-viewport:active {
+  cursor: grabbing !important;
+}
+
+.avatar-crop-image {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  max-width: none !important;
+  max-height: none !important;
+  pointer-events: none !important;
+  will-change: transform !important;
+}
+
+.avatar-crop-mask-circle {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65) !important;
+  border: 2px solid var(--accent, #4e8cff) !important;
+  pointer-events: none !important;
+  box-sizing: border-box !important;
+}
+
+.avatar-crop-crosshair {
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  opacity: 0.35 !important;
+}
+
+.avatar-crop-crosshair .crosshair-v {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 50% !important;
+  width: 1px !important;
+  background: #ffffff !important;
+  transform: translateX(-50%) !important;
+}
+
+.avatar-crop-crosshair .crosshair-h {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 50% !important;
+  height: 1px !important;
+  background: #ffffff !important;
+  transform: translateY(-50%) !important;
+}
+
+.avatar-crop-controls {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.avatar-crop-zoom-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
+  padding: 0 8px !important;
+}
+
+.avatar-crop-zoom-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: var(--radius-pill, 999px) !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: transform 0.1s ease, background 0.15s ease !important;
+  padding: 0 !important;
+}
+
+.avatar-crop-zoom-btn:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+.avatar-crop-zoom-btn:not(:disabled):active {
+  transform: scale(0.92) !important;
+  background: var(--surface-hover) !important;
+}
+
+.avatar-crop-slider {
+  flex: 1 !important;
+  accent-color: var(--accent, #4e8cff) !important;
+  cursor: pointer !important;
+  height: 6px !important;
+}
+
+.avatar-crop-zoom-label {
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 

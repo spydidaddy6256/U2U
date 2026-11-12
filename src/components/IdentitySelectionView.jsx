@@ -4,6 +4,7 @@ import { AVATAR_PRESETS, getAvatarSvg } from '../data/avatars';
 import { generateRandomDisplayName, sanitizeDisplayName, isValidDisplayName, validateAvatarFile } from '../utils/identity';
 import { playTickSound, playErrorSound } from '../utils/audio';
 import { isNativeAndroid } from '../utils/apiConfig';
+import AvatarCropModal from './modals/AvatarCropModal';
 
 export default function IdentitySelectionView({
   onConfirmIdentity,
@@ -26,6 +27,8 @@ export default function IdentitySelectionView({
     if (initialAvatar && initialAvatar.startsWith('data:')) return 'custom';
     return 'presets';
   });
+  const [cropImageSrc, setCropImageSrc] = useState('');
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef(null);
 
@@ -55,15 +58,33 @@ export default function IdentitySelectionView({
     setErrorMsg('');
     const reader = new FileReader();
     reader.onload = () => {
-      setCustomAvatarData(reader.result);
-      setSelectedAvatarId('custom');
-      playTickSound();
+      if (isNative) {
+        setCropImageSrc(reader.result);
+        setIsCropModalOpen(true);
+      } else {
+        setCustomAvatarData(reader.result);
+        setSelectedAvatarId('custom');
+        playTickSound();
+      }
     };
     reader.onerror = () => {
       playErrorSound();
       setErrorMsg('Failed to read image file');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleApplyCroppedAvatar = (croppedDataUrl) => {
+    setCustomAvatarData(croppedDataUrl);
+    setSelectedAvatarId('custom');
+    setIsCropModalOpen(false);
+    setCropImageSrc('');
+  };
+
+  const handleCancelCrop = () => {
+    setIsCropModalOpen(false);
+    setCropImageSrc('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleRemoveCustom = () => {
@@ -392,6 +413,15 @@ export default function IdentitySelectionView({
           </div>
         </form>
       </div>
+
+      {isCropModalOpen && (
+        <AvatarCropModal
+          isOpen={isCropModalOpen}
+          imageSrc={cropImageSrc}
+          onApplyCrop={handleApplyCroppedAvatar}
+          onCancel={handleCancelCrop}
+        />
+      )}
     </div>
   );
 }

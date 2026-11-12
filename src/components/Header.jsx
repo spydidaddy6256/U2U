@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   Menu,
+  MoreVertical,
   X,
   FileText,
   Lock
@@ -171,8 +172,32 @@ export default function Header({
   const renderAvatarThumb = (identity, fallbackName = 'You') => {
     if (!identity) return <div className="identity-avatar-placeholder"><User size={14} /></div>;
     const avatar = identity.avatar || 'neon-neko';
-    if (avatar.startsWith('data:')) {
-      return <img src={avatar} alt={identity.displayName || fallbackName} className="identity-avatar-img" />;
+    const isImage = typeof avatar === 'string' && (
+      avatar.startsWith('data:') ||
+      avatar.startsWith('http://') ||
+      avatar.startsWith('https://') ||
+      avatar.startsWith('blob:')
+    );
+    if (isImage) {
+      return (
+        <>
+          <img
+            src={avatar}
+            alt={identity.displayName || fallbackName}
+            className="identity-avatar-img"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+          <div
+            className="identity-avatar-svg avatar-img-fallback"
+            style={{ display: 'none', width: '100%', height: '100%' }}
+            dangerouslySetInnerHTML={{ __html: getAvatarSvg('neon-neko') }}
+          />
+        </>
+      );
     }
     return (
       <div
@@ -240,14 +265,17 @@ export default function Header({
             <span>Clear Chat</span>
           </button>
 
-          <button 
-            type="button"
-            className="dropdown-item danger" 
-            onClick={() => { setMenuOpen(false); onOpenBurnSession(); }}
-          >
-            <Flame size={16} />
-            <span>Burn Session</span>
-          </button>
+          {/* Burn Session — website only; kept separate as dedicated pill on native Android */}
+          {!isNative && (
+            <button
+              type="button"
+              className="dropdown-item danger"
+              onClick={() => { setMenuOpen(false); onOpenBurnSession(); }}
+            >
+              <Flame size={16} />
+              <span>Burn Session</span>
+            </button>
+          )}
 
           <div className="dropdown-divider" />
 
@@ -493,23 +521,42 @@ export default function Header({
                 </div>
               </div>
 
-              {/* Chat Header Burn Button */}
-              <button
-                type="button"
-                className="native-header-burn-btn"
-                onClick={() => {
-                  playTickSound();
-                  if (onOpenBurnSession) {
-                    onOpenBurnSession();
-                  } else {
+              {/* Native Chat Header Actions: Burn pill (kept separate) + Three-dot options menu */}
+              <div className="native-chat-header-actions" ref={menuRef}>
+                <button
+                  type="button"
+                  className="native-header-burn-btn"
+                  onClick={() => {
+                    playTickSound();
+                    if (onOpenBurnSession) {
+                      onOpenBurnSession();
+                    }
+                  }}
+                  title="Burn session"
+                  aria-label="Burn session"
+                >
+                  Burn
+                </button>
+
+                <button
+                  ref={hamburgerBtnRef}
+                  type="button"
+                  className={`native-icon-btn native-chat-menu-btn ${menuOpen ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setMenuOpen(!menuOpen);
-                  }
-                }}
-                title="Burn session"
-                aria-label="Burn session"
-              >
-                Burn
-              </button>
+                    playTickSound();
+                  }}
+                  title="Chat options"
+                  aria-label="Chat options menu"
+                  aria-haspopup="true"
+                  aria-expanded={menuOpen}
+                >
+                  <MoreVertical size={20} />
+                </button>
+
+                {menuOpen && renderDropdownMenu()}
+              </div>
             </>
           ) : (
             /* Non-Chat / Home Mode (Matching Home PNG) */
