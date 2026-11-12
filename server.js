@@ -302,6 +302,131 @@ function startVoiceUnreadTimer(room, targetMsg) {
   room.voiceTimers.set(messageId, timer);
 }
 
+// Two-Stage Anti-Spam Protection:
+// Stage 1: Rolling 10s window, max 20 messages. 21st message warns sender:
+// "You're sending messages too quickly. Please slow down." (messaging not blocked)
+// Stage 2: If sender continues sending messages after receiving warning:
+// 10-second cooldown for the entire chat session. Both participants blocked.
+// "Spam detected. Messaging paused." (synchronized countdown)
+function checkRoomMessageSpam(room, clientId, ws) {
+  if (!room || !clientId) return { allowed: true };
+  const now = Date.now();
+
+  // 1. Check active chat session cooldown
+  if (room.cooldown && room.cooldown.active) {
+    if (now < room.cooldown.expiresAt) {
+      const remainingSeconds = Math.max(1, Math.ceil((room.cooldown.expiresAt - now) / 1000));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'spam_cooldown',
+          active: true,
+          duration: 10,
+          expiresAt: room.cooldown.expiresAt,
+          remainingSeconds,
+          message: 'Spam detected. Messaging paused.'
+        }));
+      }
+      return { allowed: false, isCooldown: true };
+    } else {
+      room.cooldown.active = false;
+      if (room.cooldownTimer) {
+        clearTimeout(room.cooldownTimer);
+        room.cooldownTimer = null;
+      }
+    }
+  }
+
+  // 2. Track messages sent by each participant independently
+  if (!room.spamTracker) room.spamTracker = new Map();
+  let tracker = room.spamTracker.get(clientId);
+  if (!tracker) {
+    tracker = { timestamps: [], warned: false, lastWarnedAt: 0 };
+    room.spamTracker.set(clientId, tracker);
+  }
+
+  // Rolling 10-second window
+  const windowCutoff = now - 10000;
+  tracker.timestamps = tracker.timestamps.filter(t => t > windowCutoff);
+
+  // Reset warning state when participant's message rate returns to normal (<= 20 messages in rolling 10s)
+  if (tracker.timestamps.length <= 20) {
+    tracker.warned = false;
+  }
+
+  // 3. Stage Two: If the same participant continues sending messages after receiving the warning
+  if (tracker.warned && tracker.timestamps.length >= 20) {
+    const cooldownDuration = 10;
+    const cooldownExpiresAt = now + cooldownDuration * 1000;
+    room.cooldown = {
+      active: true,
+      expiresAt: cooldownExpiresAt,
+      duration: cooldownDuration,
+      startedAt: now
+    };
+
+    // Reset trackers so messaging resumes clean after cooldown
+    for (const t of room.spamTracker.values()) {
+      t.timestamps = [];
+      t.warned = false;
+    }
+
+    const cooldownPayload = JSON.stringify({
+      type: 'spam_cooldown',
+      active: true,
+      duration: cooldownDuration,
+      expiresAt: cooldownExpiresAt,
+      remainingSeconds: cooldownDuration,
+      message: 'Spam detected. Messaging paused.'
+    });
+
+    for (const pWs of room.participants.values()) {
+      if (pWs.readyState === WebSocket.OPEN) {
+        pWs.send(cooldownPayload);
+      }
+    }
+
+    if (room.cooldownTimer) clearTimeout(room.cooldownTimer);
+    room.cooldownTimer = setTimeout(() => {
+      if (room.cooldown && room.cooldown.active) {
+        room.cooldown.active = false;
+        room.cooldownTimer = null;
+        const resumedPayload = JSON.stringify({
+          type: 'spam_cooldown',
+          active: false,
+          remainingSeconds: 0,
+          message: 'Messaging resumed.'
+        });
+        for (const pWs of room.participants.values()) {
+          if (pWs.readyState === WebSocket.OPEN) {
+            pWs.send(resumedPayload);
+          }
+        }
+      }
+    }, cooldownDuration * 1000);
+
+    return { allowed: false, isCooldown: true };
+  }
+
+  // 4. Record current message
+  tracker.timestamps.push(now);
+
+  // 5. Stage One: Up to 20 messages allowed. More than 20 within 10s triggers warning
+  if (tracker.timestamps.length === 21) {
+    tracker.warned = true;
+    tracker.lastWarnedAt = now;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'spam_warning',
+        message: "You're sending messages too quickly. Please slow down."
+      }));
+    }
+    // Do not block messaging at Stage One
+    return { allowed: true, warned: true };
+  }
+
+  return { allowed: true };
+}
+
 // Periodic cleanup of expired rooms, tickets, and rate-limit records
 setInterval(() => {
   const now = Date.now();
@@ -322,6 +447,7 @@ setInterval(() => {
       }
       for (const timer of room.photoTimers.values()) clearTimeout(timer);
       for (const timer of room.voiceTimers.values()) clearTimeout(timer);
+      if (room.cooldownTimer) clearTimeout(room.cooldownTimer);
       if (room.disconnectTimers) {
         for (const timer of room.disconnectTimers.values()) clearTimeout(timer);
         room.disconnectTimers.clear();
@@ -561,7 +687,10 @@ app.post('/api/session/create', checkMaintenance, (req, res) => {
     peerLeftStatus: null,
     leftClientIds: new Set(),
     deletedMessageIds: new Set(),
-    hadTwoParticipants: false
+    hadTwoParticipants: false,
+    cooldown: null,
+    cooldownTimer: null,
+    spamTracker: new Map()
   };
 
   rooms.set(cleanSessionId, room);
@@ -997,7 +1126,7 @@ wss.on('connection', (ws, req) => {
 
       const costCategory = isLowCost ? 'low' : (isHighCost ? 'high' : 'normal');
 
-      if (!checkEventRate(costCategory)) {
+      if (eventType !== 'message' && !checkEventRate(costCategory)) {
         ws.send(JSON.stringify({
           type: 'error',
           code: 'RATE_LIMITED',
@@ -1177,6 +1306,9 @@ wss.on('connection', (ws, req) => {
           }
 
           // Confirm join with rolling reconnect ticket and room chat-cleared state
+          const isCooldownActive = Boolean(room.cooldown && room.cooldown.active && joinNow < room.cooldown.expiresAt);
+          const cooldownRemaining = isCooldownActive ? Math.max(1, Math.ceil((room.cooldown.expiresAt - joinNow) / 1000)) : 0;
+
           ws.send(JSON.stringify({
             type: 'joined',
             sessionId: cleanId,
@@ -1186,7 +1318,14 @@ wss.on('connection', (ws, req) => {
             reconnectTicket,
             recentEnvelopes: sanitizedEnvelopes,
             chatClearedAt: room.chatClearedAt || null,
-            peerIdentities: existingIdentities
+            peerIdentities: existingIdentities,
+            spamCooldown: isCooldownActive ? {
+              active: true,
+              duration: 10,
+              expiresAt: room.cooldown.expiresAt,
+              remainingSeconds: cooldownRemaining,
+              message: 'Spam detected. Messaging paused.'
+            } : null
           }));
 
           // Notify peer and synchronize presence with identities
@@ -1251,6 +1390,12 @@ wss.on('connection', (ws, req) => {
           if (!isAuthenticated || !currentSessionId) return;
           const room = rooms.get(currentSessionId);
           if (!room) return;
+
+          // Two-Stage Anti-Spam Protection: Authoritative message rate & cooldown validation
+          const spamResult = checkRoomMessageSpam(room, currentClientId, ws);
+          if (!spamResult.allowed) {
+            return;
+          }
 
           // Reject message if participant left or session has departed
           if (room.peerLeftStatus || (room.leftClientIds && room.leftClientIds.size > 0) || room.leftClientIds?.has(currentClientId)) {

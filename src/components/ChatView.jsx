@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, ArrowUp, Image as ImageIcon,
-  AlertCircle, ChevronDown, Mic, WifiOff,
+  AlertCircle, AlertTriangle, ChevronDown, Clock, Mic, WifiOff,
   MoreHorizontal, Smile
 } from 'lucide-react';
 import { encryptPayload, decryptPayload, compressImage } from '../utils/crypto';
@@ -104,6 +104,9 @@ export default function ChatView({
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionPickerTarget, setReactionPickerTarget] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
+  const [spamWarning, setSpamWarning] = useState('');
+  const [spamCooldown, setSpamCooldown] = useState(null); // { active: boolean, expiresAt: number, remainingSeconds: number }
+  const spamWarningTimerRef = useRef(null);
   const [peerLeftPermanently, setPeerLeftPermanently] = useState(false);
   const peerLeftPermanentlyRef = useRef(false);
   useEffect(() => {
@@ -299,6 +302,33 @@ export default function ChatView({
     return () => clearInterval(interval);
   }, []);
 
+  // Synchronized spam cooldown countdown timer
+  const cooldownExpiresAt = spamCooldown?.expiresAt;
+  const isCooldownActive = Boolean(spamCooldown?.active);
+
+  useEffect(() => {
+    if (!isCooldownActive || !cooldownExpiresAt) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const secLeft = Math.max(0, Math.ceil((cooldownExpiresAt - now) / 1000));
+      if (secLeft <= 0) {
+        setSpamCooldown(null);
+        clearInterval(interval);
+      } else {
+        setSpamCooldown(prev => prev && prev.active ? { ...prev, remainingSeconds: secLeft } : null);
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [isCooldownActive, cooldownExpiresAt]);
+
+  useEffect(() => {
+    return () => {
+      if (spamWarningTimerRef.current) clearTimeout(spamWarningTimerRef.current);
+    };
+  }, []);
+
   // Close attachment menu on outside click
   useEffect(() => {
     function handleClickOutside(e) {
@@ -331,6 +361,19 @@ export default function ChatView({
           setMessages(prev => prev.filter(m => (m.timestamp || 0) >= data.chatClearedAt));
           setPhotoTimers({});
           setVoiceTimers({});
+        }
+
+        // Active spam cooldown synchronization across reconnects
+        if (data.spamCooldown && data.spamCooldown.active) {
+          const expiresAt = data.spamCooldown.expiresAt;
+          const remainingSeconds = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+          setSpamCooldown({
+            active: true,
+            expiresAt,
+            remainingSeconds,
+            message: data.spamCooldown.message || 'Spam detected. Messaging paused.'
+          });
+          setSpamWarning('');
         }
 
         // Synchronize peer identities from room
@@ -727,6 +770,40 @@ export default function ChatView({
         break;
       }
 
+      case 'spam_warning': {
+        const warningMsg = data.message || "You're sending messages too quickly. Please slow down.";
+        setSpamWarning(warningMsg);
+        if (spamWarningTimerRef.current) clearTimeout(spamWarningTimerRef.current);
+        spamWarningTimerRef.current = setTimeout(() => {
+          setSpamWarning('');
+        }, 6000);
+        break;
+      }
+
+      case 'spam_cooldown': {
+        if (data.active) {
+          const expiresAt = data.expiresAt || (Date.now() + (data.duration || 10) * 1000);
+          const remainingSeconds = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
+          setSpamCooldown({
+            active: true,
+            expiresAt,
+            remainingSeconds,
+            message: data.message || "Spam detected. Messaging paused."
+          });
+          setSpamWarning('');
+          setIsRecording(false);
+          setAttachmentMenuOpen(false);
+        } else {
+          setSpamCooldown(null);
+        }
+        break;
+      }
+
+      case 'spam_cooldown_expired': {
+        setSpamCooldown(null);
+        break;
+      }
+
       case 'error': {
         if (data.code === 'INVALID_TICKET') {
           if (onRefreshTicket) {
@@ -1058,6 +1135,7 @@ export default function ChatView({
 
   // Send text message
   const handleSendMessage = async () => {
+    if (spamCooldown?.active) return;
     if (peerLeftPermanentlyRef.current) {
       onToast?.('User has left the session');
       return;
@@ -1104,7 +1182,9 @@ export default function ChatView({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      if (!spamCooldown?.active) {
+        handleSendMessage();
+      }
     }
   };
 
@@ -1126,6 +1206,7 @@ export default function ChatView({
 
   // Send encrypted voice note
   const handleSendVoiceNote = async (audioBlob, duration) => {
+    if (spamCooldown?.active) return;
     if (peerLeftPermanentlyRef.current) {
       onToast?.('User has left the session');
       return;
@@ -1204,6 +1285,7 @@ export default function ChatView({
 
   // Send encrypted photo
   const handleSendPhoto = async ({ dataUrl, isViewOnce }) => {
+    if (spamCooldown?.active) return;
     if (peerLeftPermanentlyRef.current) {
       onToast?.('User has left the session');
       return;
@@ -1772,6 +1854,25 @@ export default function ChatView({
 
       {/* Composer */}
       <div className="composer-wrapper" style={{ position: 'relative' }}>
+        {/* Anti-Spam Stage One Warning Banner */}
+        {spamWarning && (
+          <div className="spam-warning-banner" role="alert" aria-live="assertive">
+            <AlertTriangle size={15} className="spam-warning-icon" />
+            <span className="spam-warning-text">{spamWarning}</span>
+          </div>
+        )}
+
+        {/* Anti-Spam Stage Two Cooldown Banner */}
+        {spamCooldown?.active && (
+          <div className="spam-cooldown-banner" role="alert" aria-live="assertive">
+            <div className="spam-cooldown-content">
+              <Clock size={15} className="spam-cooldown-icon" />
+              <span className="spam-cooldown-text">{spamCooldown.message || 'Spam detected. Messaging paused.'}</span>
+            </div>
+            <span className="spam-cooldown-timer">{spamCooldown.remainingSeconds ?? 10}s</span>
+          </div>
+        )}
+
         {/* Reply Preview Bar above Composer */}
         <ComposerReplyBar
           replyingTo={replyingTo}
@@ -1780,7 +1881,7 @@ export default function ChatView({
         />
 
         {/* Attachment popover */}
-        {!isRecording && attachmentMenuOpen && (
+        {!isRecording && attachmentMenuOpen && !spamCooldown?.active && (
           <div className="attachment-popover" ref={attachmentMenuRef}>
             <button className="attachment-item-btn" onClick={() => fileInputRef.current?.click()}>
               <ImageIcon size={16} style={{ color: 'var(--accent)' }} />
@@ -1801,17 +1902,17 @@ export default function ChatView({
             }}
           />
         ) : (
-          <div className="composer-bar">
+          <div className={`composer-bar ${spamCooldown?.active ? 'cooldown-active' : ''}`}>
             <button
               className="composer-add-btn"
               onClick={() => {
-                if (peerLeftPermanently) return;
+                if (peerLeftPermanently || spamCooldown?.active) return;
                 setAttachmentMenuOpen(!attachmentMenuOpen);
               }}
-              title={peerLeftPermanently ? 'User left the session' : 'Add photo'}
+              title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Add photo')}
               aria-label="Add attachment"
-              disabled={peerLeftPermanently}
-              style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
               <Plus size={19} />
             </button>
@@ -1819,13 +1920,13 @@ export default function ChatView({
             <textarea
               ref={textareaRef}
               className="composer-input"
-              placeholder={peerLeftPermanently ? 'User left the session' : 'Write a message…'}
+              placeholder={spamCooldown?.active ? `Messaging paused (${spamCooldown.remainingSeconds ?? 10}s)…` : (peerLeftPermanently ? 'User left the session' : 'Write a message…')}
               rows={1}
               value={inputText}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              disabled={peerLeftPermanently}
-              style={peerLeftPermanently ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
               autoComplete="on"
               autoCorrect="on"
               autoCapitalize="sentences"
@@ -1838,13 +1939,13 @@ export default function ChatView({
               type="button"
               className={`composer-emoji-btn ${emojiPickerOpen ? 'active' : ''}`}
               onClick={() => {
-                if (peerLeftPermanently) return;
+                if (peerLeftPermanently || spamCooldown?.active) return;
                 setEmojiPickerOpen(!emojiPickerOpen);
               }}
-              title={peerLeftPermanently ? 'User left the session' : 'U2U Emojis'}
+              title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'U2U Emojis')}
               aria-label="Open U2U emoji picker"
-              disabled={peerLeftPermanently}
-              style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+              disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+              style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
             >
               <Smile size={18} />
             </button>
@@ -1854,13 +1955,13 @@ export default function ChatView({
               <button
                 className="composer-mic-btn"
                 onClick={() => {
-                  if (peerLeftPermanently) return;
+                  if (peerLeftPermanently || spamCooldown?.active) return;
                   setIsRecording(true);
                 }}
-                title={peerLeftPermanently ? 'User left the session' : 'Send a voice note'}
+                title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Send a voice note')}
                 aria-label="Record voice note"
-                disabled={peerLeftPermanently}
-                style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+                style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
               >
                 <Mic size={18} />
               </button>
@@ -1871,13 +1972,13 @@ export default function ChatView({
               <button
                 className="composer-send-btn"
                 onClick={() => {
-                  if (peerLeftPermanently) return;
+                  if (peerLeftPermanently || spamCooldown?.active) return;
                   handleSendMessage();
                 }}
-                title={peerLeftPermanently ? 'User left the session' : 'Send message'}
+                title={spamCooldown?.active ? 'Messaging paused' : (peerLeftPermanently ? 'User left the session' : 'Send message')}
                 aria-label="Send"
-                disabled={peerLeftPermanently}
-                style={peerLeftPermanently ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                disabled={peerLeftPermanently || Boolean(spamCooldown?.active)}
+                style={(peerLeftPermanently || spamCooldown?.active) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               >
                 <ArrowUp size={18} />
               </button>

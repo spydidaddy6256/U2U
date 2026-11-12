@@ -1086,6 +1086,101 @@
   background: rgba(224, 94, 70, 0.16);
 }
 
+/* ── Anti-Spam Protection Banners ── */
+.spam-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  border-radius: var(--radius-md, 14px);
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s var(--ease-natural);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.spam-warning-icon {
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
+.spam-warning-text {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.spam-cooldown-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  border-radius: var(--radius-md, 14px);
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s var(--ease-natural);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.spam-cooldown-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.spam-cooldown-icon {
+  flex-shrink: 0;
+  color: #ef4444;
+}
+
+.spam-cooldown-text {
+  line-height: 1.35;
+  font-weight: 600;
+  color: #fecaca;
+}
+
+.spam-cooldown-timer {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.4);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.composer-bar.cooldown-active {
+  opacity: 0.55;
+  border-color: rgba(239, 68, 68, 0.3);
+  cursor: not-allowed;
+}
+
+.composer-bar.cooldown-active .composer-input {
+  cursor: not-allowed;
+}
+
+.composer-bar.cooldown-active button {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* ── Voice Note Recorder Bar ── */
 .voice-recorder-bar {
   display: flex;
