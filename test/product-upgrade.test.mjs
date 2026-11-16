@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import crypto from 'crypto';
+import { spawn } from 'child_process';
 import { generateAnonymousName, sanitizeDisplayName, validateDisplayName } from '../src/utils/identity.js';
 import { AVATARS, getAvatarSvg } from '../src/data/avatars.js';
 import {
@@ -58,6 +59,29 @@ async function runTests() {
       failed++;
     }
   }
+
+  let spawnedServer = null;
+  try {
+    try {
+      await fetch(`${BASE_URL}/api/health`);
+    } catch {
+      console.log(`Server not running on ${BASE_URL}. Auto-spawning test server...`);
+      const port = new URL(BASE_URL).port || '3001';
+      spawnedServer = spawn('node', ['server.js'], {
+        env: { ...process.env, PORT: port, NODE_ENV: 'test' },
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      await new Promise((resolveSpawn, rejectSpawn) => {
+        const t = setTimeout(() => rejectSpawn(new Error('Server spawn timed out')), 7000);
+        spawnedServer.stdout.on('data', (d) => {
+          if (d.toString().includes(`running on port ${port}`)) {
+            clearTimeout(t);
+            resolveSpawn();
+          }
+        });
+      });
+      console.log(`Test server is online on port ${port}.\n`);
+    }
 
   // ─────────────────────────────────────────────────────────────
   // 1. Identity Generation, Sanitization & Original Avatars
@@ -457,6 +481,15 @@ async function runTests() {
 
   assert(creatorReceivedPeerIdentity, 'Session creator received peer identity broadcast over WebSocket');
   assert(joinerReceivedPeerIdentity, 'Joining peer received creator identity broadcast over WebSocket');
+
+  } catch (err) {
+    console.error('Fatal error during test run:', err);
+    failed++;
+  } finally {
+    if (spawnedServer) {
+      spawnedServer.kill();
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Summary

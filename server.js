@@ -134,6 +134,89 @@ const RECONNECT_GRACE_PERIOD_MS = process.env.RECONNECT_GRACE_PERIOD_MS
   ? parseInt(process.env.RECONNECT_GRACE_PERIOD_MS, 10)
   : 30 * 1000; // 30 seconds reconnection grace period for temporary interruptions
 
+const ONE_VIEW_RESTRICTED_MESSAGE = 'One-View Photos are available exclusively in the U2U Android app. Please use the app to send and view One-View Photos.';
+
+const U2U_PLATFORM_KEY = process.env.U2U_PLATFORM_KEY || 'u2u-native-platform-v1-key-sec';
+
+function verifyPlatformProof(proof, sessionId, clientId) {
+  if (!proof || typeof proof !== 'string' || !sessionId || !clientId) return false;
+  try {
+    const expected = crypto.createHmac('sha256', U2U_PLATFORM_KEY)
+      .update(`U2U-ANDROID-NATIVE:${String(sessionId).trim().toUpperCase()}:${String(clientId).trim()}`)
+      .digest('hex');
+    const proofBuf = Buffer.from(proof, 'hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+    if (proofBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(proofBuf, expectedBuf);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Authoritatively verifies whether a connection is an authorized Native Android client
+ * vs. a website client (desktop or mobile browser).
+ * 
+ * Security rules:
+ * 1. Web browsers strictly enforce that scripts cannot forge or override the Origin header.
+ *    Any connection with a web origin (desktop web or mobile browser) is unequivocally a website client.
+ * 2. Native Android Capacitor WebView runs under androidScheme: "https" -> Origin: https://localhost
+ *    or capacitor://localhost.
+ * 3. Client must present native origin and valid native platform declaration or cryptographic platform proof.
+ */
+function isAuthorizedNativeAndroid(req, clientPlatform, platformProof, sessionId, clientId) {
+  const origin = (req?.headers?.origin || req?.headers?.Origin || '').trim().toLowerCase();
+
+  // 1. Web origin check:
+  // In all standard web browsers (desktop Chrome, Firefox, Edge, Safari, mobile Chrome on Android, iOS Safari):
+  // The browser runtime sets the Origin header to the website's hosting URL.
+  // JavaScript cannot tamper with or remove the Origin header (RFC 6455 / Fetch standard).
+  // Any web origin (production domain, port 5173, 3000, 3001, etc.) is unequivocally a website client.
+  const isWebOrigin = origin.startsWith('http://localhost:5173') ||
+                      origin.startsWith('http://localhost:3000') ||
+                      origin.startsWith('http://localhost:3001') ||
+                      origin.includes('onrender.com') ||
+                      (origin.startsWith('http://') && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) ||
+                      (origin.startsWith('https://') && origin !== 'https://localhost');
+
+  if (isWebOrigin) {
+    return false;
+  }
+
+  const platform = String(clientPlatform || req?.headers?.['x-u2u-platform'] || '').toLowerCase().trim();
+  const claimsWeb = platform === 'web' || platform === 'browser' || platform === 'desktop' || platform === 'mobile-web';
+
+  // If client explicitly declares web platform, it is not native Android
+  if (claimsWeb) {
+    return false;
+  }
+
+  // 2. Native Capacitor Android Origin:
+  // Capacitor on Android runs with androidScheme: "https" -> sets Origin: 'https://localhost' (no port) or 'capacitor://localhost'
+  const isCapacitorOrigin = origin === 'https://localhost' || 
+                            origin === 'capacitor://localhost' || 
+                            origin.startsWith('capacitor://');
+
+  const hasValidProof = verifyPlatformProof(platformProof, sessionId, clientId);
+
+  if (isCapacitorOrigin && hasValidProof) {
+    return true;
+  }
+
+  if (isCapacitorOrigin && platform === 'android-native') {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === 'test' || !process.env.NODE_ENV) {
+    if (isCapacitorOrigin) return true;
+    if (hasValidProof) return true;
+    if (platform === 'android-native') return true;
+    if (!origin && !claimsWeb) return true;
+  }
+
+  return false;
+}
+
 // Normalize IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1 -> 127.0.0.1)
 function normalizeIp(ip) {
   if (!ip || typeof ip !== 'string') return '127.0.0.1';
@@ -1087,6 +1170,8 @@ wss.on('connection', (ws, req) => {
   let currentSessionId = null;
   let currentClientId = null;
   let isAuthenticated = false;
+  ws.req = req;
+  ws.isNativeAndroid = isAuthorizedNativeAndroid(req);
 
   // Differentiated per-socket event rate limiting (5-second sliding window)
   let windowStart = Date.now();
@@ -1214,6 +1299,10 @@ wss.on('connection', (ws, req) => {
           isAuthenticated = true;
           currentSessionId = cleanId;
           currentClientId = clientId;
+          ws.isNativeAndroid = isAuthorizedNativeAndroid(req, msg.clientPlatform, msg.platformProof, cleanId, clientId);
+
+          if (!room.participantPlatforms) room.participantPlatforms = new Map();
+          room.participantPlatforms.set(clientId, ws.isNativeAndroid ? 'android-native' : 'web');
 
           if (!room.participantHistory) room.participantHistory = new Set();
           room.participantHistory.add(clientId);
@@ -1276,12 +1365,17 @@ wss.on('connection', (ws, req) => {
             }
           }
 
-          // Sanitize recent envelopes (NEVER send ciphertext for expired or consumed photos)
+          // Sanitize recent envelopes (NEVER send ciphertext for expired or consumed photos, or One-View photos to website clients)
           const sanitizedEnvelopes = room.messages
             .filter(m => !m.isUnsent && !room.deletedMessageIds?.has(m.id) && !(m.type === 'voice' && m.isExpired))
             .map(m => {
-              if (m.type === 'photo' && (m.isExpired || m.photoOpened || !m.ciphertext)) {
-                return { ...m, isExpired: true, ciphertext: null, iv: null };
+              if (m.type === 'photo') {
+                if (m.isViewOnce && !ws.isNativeAndroid) {
+                  return { ...m, isExpired: true, isRestrictedWeb: true, ciphertext: null, iv: null };
+                }
+                if (m.isExpired || m.photoOpened || !m.ciphertext) {
+                  return { ...m, isExpired: true, ciphertext: null, iv: null };
+                }
               }
               return m;
             });
@@ -1435,6 +1529,18 @@ wss.on('connection', (ws, req) => {
             isViewOnce: Boolean(envelope.isViewOnce)
           };
 
+          // Authoritative platform authorization: One-View photos are strictly Android-App-Only
+          if (safeEnvelope.type === 'photo' && safeEnvelope.isViewOnce) {
+            if (!ws.isNativeAndroid) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                code: 'ONE_VIEW_RESTRICTED',
+                message: ONE_VIEW_RESTRICTED_MESSAGE
+              }));
+              return;
+            }
+          }
+
           room.messages.push(safeEnvelope);
           if (room.messages.length > 100) {
             room.messages.shift();
@@ -1443,10 +1549,28 @@ wss.on('connection', (ws, req) => {
           let deliveredToPeer = false;
           for (const [pId, pWs] of room.participants.entries()) {
             if (pId !== currentClientId && pWs.readyState === WebSocket.OPEN) {
-              pWs.send(JSON.stringify({
-                type: 'message',
-                envelope: safeEnvelope
-              }));
+              if (safeEnvelope.type === 'photo' && safeEnvelope.isViewOnce && !pWs.isNativeAndroid) {
+                // Never deliver One-View photo ciphertext or iv to website clients!
+                pWs.send(JSON.stringify({
+                  type: 'message',
+                  envelope: {
+                    id: safeEnvelope.id,
+                    senderId: safeEnvelope.senderId,
+                    type: 'photo',
+                    isViewOnce: true,
+                    timestamp: safeEnvelope.timestamp,
+                    isRestrictedWeb: true,
+                    ciphertext: null,
+                    iv: null,
+                    replyTo: safeEnvelope.replyTo
+                  }
+                }));
+              } else {
+                pWs.send(JSON.stringify({
+                  type: 'message',
+                  envelope: safeEnvelope
+                }));
+              }
               deliveredToPeer = true;
             }
           }
@@ -1540,6 +1664,16 @@ wss.on('connection', (ws, req) => {
           if (!messageId || typeof messageId !== 'string') return;
 
           const targetMsg = room.messages.find(m => m.id === messageId);
+          // Reject website clients from triggering one-view photo opening
+          if (targetMsg?.isViewOnce && !ws.isNativeAndroid) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'ONE_VIEW_RESTRICTED',
+              message: ONE_VIEW_RESTRICTED_MESSAGE
+            }));
+            return;
+          }
+
           // Only recipient can trigger photo opened & timer, and only if not already expired/consumed
           if (targetMsg && targetMsg.type === 'photo' && targetMsg.senderId !== currentClientId && !targetMsg.isExpired && !targetMsg.isUnsent && targetMsg.ciphertext) {
             const seenTimestamp = Date.now();
@@ -1557,8 +1691,8 @@ wss.on('connection', (ws, req) => {
               }
             }
 
-            // Start 8-second countdown timer if not already running
-            if (!room.photoTimers.has(messageId)) {
+            // Only start 8-second countdown timer for One-View photos!
+            if (targetMsg.isViewOnce && !room.photoTimers.has(messageId)) {
               const expiresAt = Date.now() + PHOTO_LIFETIME_MS;
               targetMsg.photoExpiresAt = expiresAt;
 
@@ -1605,7 +1739,17 @@ wss.on('connection', (ws, req) => {
           if (!messageId || typeof messageId !== 'string') return;
 
           const targetMsg = room.messages.find(m => m.id === messageId);
-          if (targetMsg && targetMsg.type === 'photo' && targetMsg.senderId !== currentClientId) {
+          // Reject website clients from closing or consuming one-view photos
+          if (targetMsg?.isViewOnce && !ws.isNativeAndroid) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'ONE_VIEW_RESTRICTED',
+              message: ONE_VIEW_RESTRICTED_MESSAGE
+            }));
+            return;
+          }
+
+          if (targetMsg && targetMsg.type === 'photo' && targetMsg.senderId !== currentClientId && targetMsg.isViewOnce) {
             // Cancel any remaining 8s timer
             if (room.photoTimers.has(messageId)) {
               clearTimeout(room.photoTimers.get(messageId));

@@ -24,7 +24,9 @@ import {
 } from '../utils/audio';
 import { formatContextualTime, formatFullTime } from '../utils/time';
 import { isAndroidPlatform } from '../utils/platform';
-import { getWsUrl, getApiUrl } from '../utils/apiConfig';
+import { getWsUrl, getApiUrl, isNativeAndroid, getClientPlatform, generatePlatformProof } from '../utils/apiConfig';
+
+const ONE_VIEW_RESTRICTED_MESSAGE = 'One-View Photos are available exclusively in the U2U Android app. Please use the app to send and view One-View Photos.';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import PhotoPreviewModal from './modals/PhotoPreviewModal';
@@ -452,6 +454,28 @@ export default function ChatView({
                 }
               }
 
+              if (env.type === 'photo' && env.isViewOnce && !isNativeAndroid()) {
+                setMessages(prev => {
+                  const existingIdx = prev.findIndex(m => m.id === env.id);
+                  if (existingIdx !== -1) return prev;
+                  return [...prev, {
+                    id: env.id,
+                    senderId: env.senderId,
+                    timestamp: env.timestamp,
+                    type: 'photo',
+                    status: restoredStatus,
+                    seenAt: env.seenAt,
+                    isViewOnce: true,
+                    isRestrictedWeb: true,
+                    isExpired: true,
+                    photoUrl: null,
+                    reactions: env.reactions || {},
+                    replyTo: env.replyTo || null
+                  }];
+                });
+                continue;
+              }
+
               setMessages(prev => {
                 const existingIdx = prev.findIndex(m => m.id === env.id);
                 if (existingIdx !== -1) {
@@ -551,6 +575,25 @@ export default function ChatView({
 
       case 'message': {
         const env = data.envelope;
+        if (env.type === 'photo' && env.isViewOnce && !isNativeAndroid()) {
+          const newMsg = {
+            id: env.id,
+            senderId: env.senderId,
+            timestamp: env.timestamp,
+            type: 'photo',
+            status: 'delivered',
+            isViewOnce: true,
+            isRestrictedWeb: true,
+            isExpired: true,
+            photoUrl: null,
+            photoOpened: false,
+            reactions: env.reactions || {},
+            replyTo: env.replyTo || null
+          };
+          setMessages(prev => [...prev, newMsg]);
+          break;
+        }
+
         try {
           const decrypted = await decryptPayload(cryptoKey, env);
           if (env.type === 'voice') {
@@ -883,14 +926,17 @@ export default function ChatView({
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
-      ws.onopen = () => {
+      ws.onopen = async () => {
         if (isCancelled) return;
         lastPongRef.current = Date.now();
+        const platformProof = await generatePlatformProof(sessionId, clientId);
         ws.send(JSON.stringify({
           type: 'join',
           sessionId,
           ticket: authTicketRef.current || authTicket,
           clientId,
+          clientPlatform: getClientPlatform(),
+          platformProof,
           identity: selfIdentityRef.current
         }));
         if (selfIdentityRef.current) {
@@ -1290,6 +1336,12 @@ export default function ChatView({
       onToast?.('User has left the session');
       return;
     }
+
+    if (isViewOnce && !isNativeAndroid()) {
+      onToast?.(ONE_VIEW_RESTRICTED_MESSAGE);
+      return;
+    }
+
     const photoId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const now = Date.now();
     const currentReply = replyingTo ? {
@@ -1301,7 +1353,7 @@ export default function ChatView({
 
     setMessages(prev => [...prev, {
       id: photoId, senderId: clientId, type: 'photo',
-      photoUrl: dataUrl, isViewOnce, isExpired: false,
+      photoUrl: dataUrl, isViewOnce: Boolean(isViewOnce), isExpired: false,
       timestamp: now, status: 'sending',
       replyTo: currentReply
     }]);
@@ -1310,10 +1362,10 @@ export default function ChatView({
     scrollToBottom();
 
     try {
-      const encrypted = await encryptPayload(cryptoKey, { photoUrl: dataUrl, isViewOnce, replyTo: currentReply });
+      const encrypted = await encryptPayload(cryptoKey, { photoUrl: dataUrl, isViewOnce: Boolean(isViewOnce), replyTo: currentReply });
       const envelope = {
         id: photoId, senderId: clientId, type: 'photo',
-        isViewOnce, timestamp: now, iv: encrypted.iv, ciphertext: encrypted.ciphertext,
+        isViewOnce: Boolean(isViewOnce), timestamp: now, iv: encrypted.iv, ciphertext: encrypted.ciphertext,
         replyTo: currentReply
       };
 
@@ -1330,15 +1382,20 @@ export default function ChatView({
 
   // Reveal photo — called by PhotoBubble when recipient explicitly taps "Tap to view"
   // This is the single authoritative place that:
-  // 1. Tells the server to start the 30s expiration timer (photo_opened)
+  // 1. Tells the server to start the 8s expiration timer (photo_opened) for One-View photos
   // 2. Sends the seen receipt for the photo message (explicit tap = seen)
   const handleRevealPhoto = (msg) => {
     const isSelf = msg.senderId === clientId;
 
+    if (msg.isViewOnce && !isNativeAndroid()) {
+      onToast?.(ONE_VIEW_RESTRICTED_MESSAGE);
+      return;
+    }
+
     // Only non-sender triggers the server-side timer and seen receipt
     if (!isSelf && !msg.isExpired) {
-      // Start server-authoritative 30s timer
-      if (!photoTimers[msg.id]) {
+      // Start server-authoritative 8s timer only for One-View photos
+      if (msg.isViewOnce && !photoTimers[msg.id]) {
         socketRef.current?.send(JSON.stringify({
           type: 'photo_opened', sessionId, messageId: msg.id
         }));
@@ -1365,31 +1422,39 @@ export default function ChatView({
 
   // Open photo in full-screen in-app viewer (starts 8s countdown & seen receipt on first reveal)
   const handleOpenViewer = (msg) => {
+    if (msg.isViewOnce && !isNativeAndroid()) {
+      onToast?.(ONE_VIEW_RESTRICTED_MESSAGE);
+      return;
+    }
     handleRevealPhoto(msg);
     setActiveViewerMsg(msg);
     setImageViewerOpen(true);
-    playViewOnceOpenedSound();
+    if (msg.isViewOnce) {
+      playViewOnceOpenedSound();
+    }
   };
 
-  // Close full-screen in-app viewer (guarantees immediate permanent consumption)
+  // Close full-screen in-app viewer (guarantees immediate permanent consumption for One-View photos)
   const handleCloseViewer = useCallback(() => {
     if (activeViewerMsg) {
       const mid = activeViewerMsg.id;
-      setMessages(prev => prev.map(m =>
-        m.id === mid ? { ...m, isExpired: true, photoUrl: null } : m
-      ));
-      setPhotoTimers(prev => {
-        const u = { ...prev };
-        delete u[mid];
-        return u;
-      });
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({
-          type: 'photo_closed',
-          sessionId,
-          messageId: mid,
-          senderId: clientId,
-        }));
+      if (activeViewerMsg.isViewOnce) {
+        setMessages(prev => prev.map(m =>
+          m.id === mid ? { ...m, isExpired: true, photoUrl: null } : m
+        ));
+        setPhotoTimers(prev => {
+          const u = { ...prev };
+          delete u[mid];
+          return u;
+        });
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({
+            type: 'photo_closed',
+            sessionId,
+            messageId: mid,
+            senderId: clientId,
+          }));
+        }
       }
     }
     setImageViewerOpen(false);
@@ -1721,6 +1786,7 @@ export default function ChatView({
                         isSelf={isSelf}
                         timer={timer}
                         onExpandViewer={handleOpenViewer}
+                        onToast={onToast}
                       />
                     )}
 
@@ -2001,20 +2067,24 @@ export default function ChatView({
         photoData={pendingPhoto}
         onClose={handleClosePhotoPreview}
         onSendPhoto={handleSendPhoto}
+        onToast={onToast}
       />
 
       <ImageViewerModal
         isOpen={imageViewerOpen && !!activeViewerMsg}
         photoUrl={activeViewerMsg ? (messages.find(m => m.id === activeViewerMsg.id)?.photoUrl || activeViewerMsg.photoUrl) : null}
         messageId={activeViewerMsg?.id}
-        expiresAt={activeViewerMsg ? photoTimers[activeViewerMsg.id]?.expiresAt : null}
+        isViewOnce={activeViewerMsg?.isViewOnce}
+        expiresAt={activeViewerMsg && activeViewerMsg.isViewOnce ? photoTimers[activeViewerMsg.id]?.expiresAt : null}
         isExpired={activeViewerMsg ? (messages.find(m => m.id === activeViewerMsg.id)?.isExpired || activeViewerMsg.isExpired || (photoTimers[activeViewerMsg.id]?.secondsLeft <= 0)) : false}
         onPhotoExpired={(id) => {
-          setMessages(prev => prev.map(m =>
-            m.id === id ? { ...m, isExpired: true, photoUrl: null } : m
-          ));
-          setPhotoTimers(prev => { const u = { ...prev }; delete u[id]; return u; });
-          handleCloseViewer();
+          if (activeViewerMsg?.isViewOnce) {
+            setMessages(prev => prev.map(m =>
+              m.id === id ? { ...m, isExpired: true, photoUrl: null } : m
+            ));
+            setPhotoTimers(prev => { const u = { ...prev }; delete u[id]; return u; });
+            handleCloseViewer();
+          }
         }}
         onClose={handleCloseViewer}
       />

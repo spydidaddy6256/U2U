@@ -8,6 +8,7 @@ export default function ImageViewerModal({
   onClose,
   photoUrl,
   messageId,
+  isViewOnce = true,
   expiresAt,
   isExpired,
   onPhotoExpired
@@ -22,16 +23,16 @@ export default function ImageViewerModal({
   const [showControls, setShowControls] = useState(true);
   const hideTimerRef = useRef(null);
 
-  // Strictly enforce permanent expiration when viewer is closed
+  // Strictly enforce permanent expiration when viewer is closed for one-view photos
   const handleImmediateClose = useCallback(() => {
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
     }
-    if (onPhotoExpired && messageId) {
+    if (isViewOnce && onPhotoExpired && messageId) {
       onPhotoExpired(messageId);
     }
     onClose();
-  }, [onPhotoExpired, messageId, onClose]);
+  }, [isViewOnce, onPhotoExpired, messageId, onClose]);
 
   // Controls auto-hide manager
   const resetHideTimer = useCallback(() => {
@@ -133,15 +134,21 @@ export default function ImageViewerModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="viewer-header-left">
-          {expiresAt ? (
-            <div className="viewer-countdown-pill">
-              <Clock size={15} className="countdown-pulse-icon" />
-              <span>Expires in {formatCountdownSec(secondsLeft)}</span>
-            </div>
+          {isViewOnce ? (
+            expiresAt ? (
+              <div className="viewer-countdown-pill">
+                <Clock size={15} className="countdown-pulse-icon" />
+                <span>Expires in {formatCountdownSec(secondsLeft)}</span>
+              </div>
+            ) : (
+              <div className="viewer-countdown-pill">
+                <Eye size={15} />
+                <span>8s viewing limit</span>
+              </div>
+            )
           ) : (
             <div className="viewer-countdown-pill">
-              <Eye size={15} />
-              <span>8s viewing limit</span>
+              <span>Photo</span>
             </div>
           )}
         </div>
@@ -154,7 +161,7 @@ export default function ImageViewerModal({
             e.stopPropagation();
             handleImmediateClose();
           }}
-          aria-label="Close photo (consumes one-view)"
+          aria-label={isViewOnce ? "Close photo (consumes one-view)" : "Close photo"}
           title="Close photo"
         >
           <X size={22} />

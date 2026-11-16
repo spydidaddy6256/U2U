@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Eye, ShieldCheck, X } from 'lucide-react';
 import { playTickSound } from '../../utils/audio';
+import { isNativeAndroid } from '../../utils/apiConfig';
+
+const ONE_VIEW_RESTRICTED_MESSAGE = 'One-View Photos are available exclusively in the U2U Android app. Please use the app to send and view One-View Photos.';
 
 export default function PhotoPreviewModal({
   isOpen,
   onClose,
   photoData,
-  onSendPhoto
+  onSendPhoto,
+  onToast
 }) {
+  const isNative = isNativeAndroid();
   const [isViewOnce, setIsViewOnce] = useState(false);
   const [isEncrypting, setIsEncrypting] = useState(false);
 
@@ -55,6 +60,12 @@ export default function PhotoPreviewModal({
       e.stopPropagation();
     }
     if (isEncrypting) return;
+
+    if (!isNative) {
+      onToast?.(ONE_VIEW_RESTRICTED_MESSAGE);
+      return;
+    }
+
     setIsViewOnce(prev => {
       const next = !prev;
       playTickSound();
@@ -76,7 +87,7 @@ export default function PhotoPreviewModal({
     try {
       await onSendPhoto({
         ...photoData,
-        isViewOnce
+        isViewOnce: isNative ? isViewOnce : false
       });
       onClose();
     } catch (err) {
@@ -121,13 +132,14 @@ export default function PhotoPreviewModal({
 
         {/* View Once Card / Toggle */}
         <div
-          className={`view-once-toggle-card ${isViewOnce ? 'active' : ''}`}
+          className={`view-once-toggle-card ${isViewOnce ? 'active' : ''} ${!isNative ? 'disabled-web' : ''}`}
           onClick={handleToggle}
           onKeyDown={handleCardKeyDown}
           role="switch"
           aria-checked={isViewOnce}
+          aria-disabled={!isNative}
           tabIndex={0}
-          title="Click to toggle View once mode"
+          title={!isNative ? ONE_VIEW_RESTRICTED_MESSAGE : 'Click to toggle View once mode'}
         >
           <div className="view-once-card-left">
             <div className={`view-once-icon-box ${isViewOnce ? 'active' : ''}`}>
@@ -136,14 +148,19 @@ export default function PhotoPreviewModal({
             <div className="view-once-text-group">
               <div className="view-once-title">
                 <span>View once</span>
-                {isViewOnce && <span className="view-once-badge">Active</span>}
+                {isNative && isViewOnce && <span className="view-once-badge">Active</span>}
+                {!isNative && <span className="view-once-badge app-only">Android app only</span>}
               </div>
-              <div className="view-once-subtitle">Photo disappears after opening</div>
+              <div className="view-once-subtitle">
+                {!isNative
+                  ? 'Exclusively available in the U2U Android app'
+                  : 'Photo disappears after opening'}
+              </div>
             </div>
           </div>
 
           <div className="view-once-switch" aria-hidden="true">
-            <div className={`view-once-switch-track ${isViewOnce ? 'on' : 'off'}`}>
+            <div className={`view-once-switch-track ${isViewOnce ? 'on' : 'off'} ${!isNative ? 'disabled' : ''}`}>
               <div className="view-once-switch-thumb" />
             </div>
           </div>

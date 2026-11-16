@@ -891,6 +891,105 @@
   animation: fadeIn 0.22s var(--ease-natural);
 }
 
+/* One-View Photo Restricted Card on Website */
+.photo-restricted-card {
+  padding: 14px 16px;
+  background: var(--glass-bg-elevated);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  border: 1px solid var(--glass-border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+  max-width: 290px;
+  cursor: pointer;
+  transition: transform var(--duration-micro) var(--ease-natural), border-color var(--duration-normal);
+  user-select: none;
+}
+
+.photo-restricted-card:hover {
+  border-color: var(--accent-subtle-hover, rgba(0, 229, 255, 0.3));
+  transform: scale(1.01);
+}
+
+.photo-restricted-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.photo-restricted-icon-box {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.photo-restricted-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.photo-restricted-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+  letter-spacing: -0.01em;
+}
+
+.photo-restricted-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--accent, #00e5ff);
+  border-radius: var(--radius-full, 9999px);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.photo-restricted-text {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+}
+
+.photo-bubble-container.normal-photo {
+  cursor: pointer;
+}
+
+.photo-image.normal {
+  filter: none !important;
+  transform: none !important;
+}
+
+.view-once-toggle-card.disabled-web {
+  opacity: 0.75;
+  cursor: pointer;
+  border-style: dashed;
+}
+
+.view-once-badge.app-only {
+  background: rgba(255, 170, 0, 0.15) !important;
+  color: #ffaa00 !important;
+}
+
+.view-once-switch-track.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Typing Indicator ── */
 .typing-bar {
   padding: 4px 20px 2px;

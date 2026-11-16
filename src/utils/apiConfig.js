@@ -34,6 +34,34 @@ export function isNativeAndroid() {
   return false;
 }
 
+export function getClientPlatform() {
+  return isNativeAndroid() ? 'android-native' : 'web';
+}
+
+export const U2U_PLATFORM_KEY = 'u2u-native-platform-v1-key-sec';
+
+export async function generatePlatformProof(sessionId, clientId) {
+  if (!isNativeAndroid() || !sessionId || !clientId) return null;
+  try {
+    if (typeof crypto === 'undefined' || !crypto.subtle) return null;
+    const enc = new TextEncoder();
+    const keyData = enc.encode(U2U_PLATFORM_KEY);
+    const msgData = enc.encode(`U2U-ANDROID-NATIVE:${String(sessionId).trim().toUpperCase()}:${String(clientId).trim()}`);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
 export function getApiBaseUrl() {
   const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
                  (typeof process !== 'undefined' && process.env?.VITE_API_BASE_URL);

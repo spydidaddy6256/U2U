@@ -46,7 +46,29 @@ async function runTests() {
     }
   }
 
+  let spawnedServer = null;
   try {
+    try {
+      await fetch(`${BASE_URL}/api/health`);
+    } catch {
+      console.log(`Server not running on ${BASE_URL}. Auto-spawning test server...`);
+      const port = new URL(BASE_URL).port || '3001';
+      spawnedServer = spawn('node', ['server.js'], {
+        env: { ...process.env, PORT: port, NODE_ENV: 'test' },
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      await new Promise((resolveSpawn, rejectSpawn) => {
+        const t = setTimeout(() => rejectSpawn(new Error('Server spawn timed out')), 7000);
+        spawnedServer.stdout.on('data', (d) => {
+          if (d.toString().includes(`running on port ${port}`)) {
+            clearTimeout(t);
+            resolveSpawn();
+          }
+        });
+      });
+      console.log(`Test server is online on port ${port}.\n`);
+    }
+
     // ----------------------------------------------------
     // CHECK 1: Production Security Headers & Health Check
     // ----------------------------------------------------
@@ -870,6 +892,10 @@ async function runTests() {
   } catch (err) {
     console.error('Fatal error during test run:', err);
     failed++;
+  } finally {
+    if (spawnedServer) {
+      spawnedServer.kill();
+    }
   }
 
   console.log('\n====================================================');
